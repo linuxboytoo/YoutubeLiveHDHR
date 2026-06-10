@@ -47,6 +47,8 @@ def _poll():
             live_state[channel.id] = is_live
             if is_live != was_live:
                 logger.info("Channel %s (%s): %s", channel.id, channel.name, "LIVE" if is_live else "offline")
+                threading.Thread(target=guide.force_refresh_program,
+                                 args=(channel.youtube,), daemon=True).start()
 
     # Groups: pick highest-priority live member
     for group in _config.groups:

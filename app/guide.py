@@ -118,6 +118,12 @@ def _fetch_program(uc_id: str):
         logger.warning("Error fetching program info for %s: %s", uc_id, e)
 
 
+def force_refresh_program(uc_id: str):
+    """Bypass TTL and immediately re-fetch program info. Call on live state change."""
+    _program_fetched_at.pop(uc_id, None)
+    _fetch_program(uc_id)
+
+
 def refresh_all_programs(channels):
     """Refresh program info for all channels in parallel. Called on its own schedule."""
     from concurrent.futures import ThreadPoolExecutor
