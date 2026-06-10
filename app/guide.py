@@ -62,7 +62,7 @@ def fetch_channel_logo(uc_id: str) -> Optional[str]:
         result = subprocess.run(
             ["yt-dlp", "--flat-playlist", "--dump-single-json",
              f"https://www.youtube.com/channel/{uc_id}"],
-            capture_output=True, text=True, timeout=30
+            capture_output=True, text=True, timeout=60
         )
         if result.stdout.strip():
             info = json.loads(result.stdout.strip())
