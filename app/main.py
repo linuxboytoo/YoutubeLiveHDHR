@@ -20,6 +20,7 @@ DEVICE_AUTH = os.getenv("HDHR_DEVICE_AUTH", "")
 FRIENDLY_NAME = os.getenv("HDHR_FRIENDLY_NAME", "YouTubeHDHR")
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "60"))
 PORT = int(os.getenv("PORT", "5004"))
+BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
 
 _config = None
 
@@ -33,6 +34,12 @@ def _get_local_ip() -> str:
         return "127.0.0.1"
     finally:
         s.close()
+
+
+def _base_url() -> str:
+    if BASE_URL:
+        return BASE_URL
+    return f"http://{_get_local_ip()}:{PORT}"
 
 
 @asynccontextmanager
@@ -68,7 +75,7 @@ async def log_requests(request: Request, call_next):
 
 @app.get("/discover.json")
 def discover():
-    ip = _get_local_ip()
+    base = _base_url()
     return {
         "FriendlyName": FRIENDLY_NAME,
         "ModelNumber": "HDTC-2US",
@@ -76,19 +83,19 @@ def discover():
         "FirmwareVersion": "20190621",
         "DeviceID": DEVICE_ID,
         "DeviceAuth": DEVICE_AUTH,
-        "BaseURL": f"http://{ip}:{PORT}",
-        "LineupURL": f"http://{ip}:{PORT}/lineup.json",
+        "BaseURL": base,
+        "LineupURL": f"{base}/lineup.json",
         "TunerCount": 10,
     }
 
 
 @app.get("/device.xml")
 def device_xml():
-    ip = _get_local_ip()
+    base = _base_url()
     xml = f"""<?xml version="1.0" encoding="utf-8"?>
 <root xmlns="urn:schemas-upnp-org:device-1-0">
   <specVersion><major>1</major><minor>0</minor></specVersion>
-  <URLBase>http://{ip}:{PORT}</URLBase>
+  <URLBase>{base}</URLBase>
   <device>
     <deviceType>urn:schemas-upnp-org:device:MediaServer:1</deviceType>
     <friendlyName>{FRIENDLY_NAME}</friendlyName>
@@ -117,7 +124,7 @@ def lineup():
     if _config is None:
         return []
 
-    ip = _get_local_ip()
+    base = _base_url()
     entries = []
 
     for ch in _config.channels:
@@ -125,7 +132,7 @@ def lineup():
         entry = {
             "GuideNumber": gn,
             "GuideName": ch.name,
-            "URL": f"http://{ip}:{PORT}/auto/v{ch.id}",
+            "URL": f"{base}/auto/v{ch.id}",
             "Guide_ID": gn,
             "Station": gn,
         }
@@ -139,7 +146,7 @@ def lineup():
         entry = {
             "GuideNumber": gn,
             "GuideName": grp.name,
-            "URL": f"http://{ip}:{PORT}/auto/v{grp.id}",
+            "URL": f"{base}/auto/v{grp.id}",
             "Guide_ID": gn,
             "Station": gn,
         }

@@ -6,6 +6,7 @@ services:
     volumes:
       - ./config:/config
     environment:
+      - BASE_URL=
       - HDHR_DEVICE_ID=12345678
       - HDHR_DEVICE_AUTH=
       - HDHR_FRIENDLY_NAME=YouTubeHDHR
