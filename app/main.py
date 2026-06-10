@@ -59,6 +59,7 @@ def discover():
         "DeviceAuth": DEVICE_AUTH,
         "BaseURL": f"http://{ip}:{PORT}",
         "LineupURL": f"http://{ip}:{PORT}/lineup.json",
+        "TunerCount": 10,
     }
 
 
@@ -101,10 +102,13 @@ def lineup():
     entries = []
 
     for ch in _config.channels:
+        gn = str(ch.id)
         entry = {
-            "GuideNumber": str(ch.id),
+            "GuideNumber": gn,
             "GuideName": ch.name,
             "URL": f"http://{ip}:{PORT}/auto/v{ch.id}",
+            "Guide_ID": gn,
+            "Station": gn,
         }
         logo = guide._logo_cache.get(ch.youtube)
         if logo:
@@ -112,10 +116,13 @@ def lineup():
         entries.append(entry)
 
     for grp in _config.groups:
+        gn = str(grp.id)
         entry = {
-            "GuideNumber": str(grp.id),
+            "GuideNumber": gn,
             "GuideName": grp.name,
             "URL": f"http://{ip}:{PORT}/auto/v{grp.id}",
+            "Guide_ID": gn,
+            "Station": gn,
         }
         entries.append(entry)
 
