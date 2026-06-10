@@ -88,6 +88,8 @@ def fetch_channel_logo(uc_id: str) -> Optional[str]:
 def _fetch_program(uc_id: str):
     """Fetch program info for a single channel from its videos page (not live-gated)."""
     now = time.time()
+    if now - _program_fetched_at.get(uc_id, 0) < PROGRAM_TTL:
+        return
     try:
         result = subprocess.run(
             ["yt-dlp", "--playlist-items", "1", "--dump-json", "--no-warnings",
