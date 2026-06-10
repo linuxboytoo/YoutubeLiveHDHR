@@ -5,6 +5,7 @@ WORKDIR /app
 # Install system deps for yt-dlp/streamlink
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
+    nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

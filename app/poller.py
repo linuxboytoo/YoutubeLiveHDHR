@@ -3,6 +3,7 @@ from typing import Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
+from app.config import _resolve_handle_to_uc
 from app.models import AppConfig
 from app.resolver import get_live_stream_url
 
@@ -20,6 +21,15 @@ def _poll():
         return
 
     for channel in _config.channels:
+        uc_id = channel.youtube
+        if uc_id.startswith("@"):
+            resolved = _resolve_handle_to_uc(uc_id)
+            if resolved:
+                channel.youtube = resolved
+                logger.info("Late-resolved %s -> %s", uc_id, resolved)
+            else:
+                logger.warning("Still cannot resolve %s, skipping poll", uc_id)
+                continue
         url = get_live_stream_url(channel.youtube)
         prev = live_state.get(channel.id)
         live_state[channel.id] = url

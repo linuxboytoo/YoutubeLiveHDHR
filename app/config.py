@@ -23,19 +23,24 @@ def _resolve_handle_to_uc(handle: str) -> Optional[str]:
         return _handle_cache[handle]
 
     url = f"https://www.youtube.com/{handle}"
-    try:
-        result = subprocess.run(
-            ["yt-dlp", "--no-playlist", "--print", "channel_id", url],
-            capture_output=True, text=True, timeout=30
-        )
-        uc_id = result.stdout.strip()
-        if uc_id and uc_id.startswith("UC"):
-            _handle_cache[handle] = uc_id
-            logger.info("Resolved %s -> %s", handle, uc_id)
-            return uc_id
-        logger.warning("Could not resolve handle %s: %s", handle, result.stderr.strip())
-    except Exception as e:
-        logger.warning("Error resolving handle %s: %s", handle, e)
+    for attempt in range(3):
+        try:
+            result = subprocess.run(
+                ["yt-dlp", "--playlist-items", "1", "--print", "channel_id", url],
+                capture_output=True, text=True, timeout=60
+            )
+            uc_id = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
+            if uc_id and uc_id.startswith("UC"):
+                _handle_cache[handle] = uc_id
+                logger.info("Resolved %s -> %s", handle, uc_id)
+                return uc_id
+            logger.warning("Could not resolve handle %s: %s", handle, result.stderr.strip())
+            break
+        except subprocess.TimeoutExpired:
+            logger.warning("Timeout resolving handle %s (attempt %d/3)", handle, attempt + 1)
+        except Exception as e:
+            logger.warning("Error resolving handle %s: %s", handle, e)
+            break
     return None
 
 
@@ -83,8 +88,9 @@ def load_config() -> AppConfig:
         handle = ch["youtube"]
         uc_id = _resolve_handle_to_uc(handle) if handle.startswith("@") else handle
         if not uc_id:
-            logger.warning("Skipping channel %s — could not resolve handle %s", ch["id"], handle)
-            continue
+            # Keep the raw handle; poller will retry resolution each cycle
+            logger.warning("Could not resolve handle %s for channel %s — will retry during polling", handle, ch["id"])
+            uc_id = handle
 
         channels.append(ChannelConfig(
             id=ch["id"],
