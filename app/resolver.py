@@ -5,27 +5,36 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
-def get_live_stream_url(uc_id: str) -> Optional[str]:
-    """Return direct stream URL if channel is live, else None."""
+def is_channel_live(uc_id: str) -> bool:
+    """Fast check — is the channel currently live? Does not resolve CDN URL."""
     channel_url = f"https://www.youtube.com/channel/{uc_id}/live"
     try:
         result = subprocess.run(
-            [
-                "yt-dlp",
-                "--no-playlist",
-                "--format", "best[ext=mp4]/best",
-                "--get-url",
-                channel_url,
-            ],
+            ["yt-dlp", "--playlist-items", "1", "--print", "is_live",
+             "--no-warnings", channel_url],
+            capture_output=True, text=True, timeout=30
+        )
+        return result.stdout.strip().lower() == "true"
+    except Exception as e:
+        logger.warning("Error checking live for %s: %s", uc_id, e)
+        return False
+
+
+def get_live_stream_url(uc_id: str) -> Optional[str]:
+    """Resolve the CDN stream URL for a live channel (call on demand, not during polling)."""
+    channel_url = f"https://www.youtube.com/channel/{uc_id}/live"
+    try:
+        result = subprocess.run(
+            ["yt-dlp", "--no-playlist", "--format", "best[ext=mp4]/best",
+             "--get-url", channel_url],
             capture_output=True, text=True, timeout=60
         )
         url = result.stdout.strip()
         if url and url.startswith("http"):
             return url
-        # yt-dlp exits non-zero or returns empty if not live
         return None
     except Exception as e:
-        logger.warning("Error checking live for %s: %s", uc_id, e)
+        logger.warning("Error resolving stream for %s: %s", uc_id, e)
         return None
 
 

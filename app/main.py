@@ -6,9 +6,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import RedirectResponse, Response
 
-from app import poller
+from app import guide, poller
 from app.config import load_config
-from app.resolver import get_stream_url
+from app.resolver import get_live_stream_url, get_stream_url
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -100,18 +100,23 @@ def lineup():
     entries = []
 
     for ch in _config.channels:
-        entries.append({
+        entry = {
             "GuideNumber": str(ch.id),
             "GuideName": ch.name,
             "URL": f"http://{ip}:{PORT}/auto/v{ch.id}",
-        })
+        }
+        logo = guide._logo_cache.get(ch.youtube)
+        if logo:
+            entry["ImageURL"] = logo
+        entries.append(entry)
 
     for grp in _config.groups:
-        entries.append({
+        entry = {
             "GuideNumber": str(grp.id),
             "GuideName": grp.name,
             "URL": f"http://{ip}:{PORT}/auto/v{grp.id}",
-        })
+        }
+        entries.append(entry)
 
     return entries
 
@@ -121,14 +126,26 @@ def stream(channel_id: int):
     if _config is None:
         raise HTTPException(status_code=503, detail="Config not loaded")
 
-    # Check live state first
-    live_url = poller.live_state.get(channel_id)
-    if live_url:
-        return RedirectResponse(url=live_url, status_code=302)
-
-    # Find channel or group config for fallback
     channel = next((c for c in _config.channels if c.id == channel_id), None)
     group = next((g for g in _config.groups if g.id == channel_id), None)
+
+    # Resolve which UC ID to stream from
+    uc_id = None
+    if channel and poller.live_state.get(channel_id):
+        uc_id = channel.youtube
+    elif group:
+        active_cid = poller.live_state.get(channel_id)  # stores active member channel id
+        if active_cid:
+            member = next((c for c in _config.channels if c.id == active_cid), None)
+            if member:
+                uc_id = member.youtube
+
+    if uc_id:
+        live_url = get_live_stream_url(uc_id)
+        if live_url:
+            return RedirectResponse(url=live_url, status_code=302)
+
+    # Find channel or group config for fallback
 
     target = channel or group
     if target is None:
@@ -146,6 +163,14 @@ def stream(channel_id: int):
                 return RedirectResponse(url=resolved, status_code=302)
 
     raise HTTPException(status_code=503, detail="No stream available")
+
+
+@app.get("/epg.xml")
+def epg_xml():
+    if _config is None:
+        raise HTTPException(status_code=503, detail="Config not loaded")
+    xml = guide.build_xmltv(_config, poller.live_state)
+    return Response(content=xml, media_type="application/xml")
 
 
 @app.post("/reload")

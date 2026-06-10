@@ -1,11 +1,13 @@
 import logging
+import threading
 from typing import Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.config import _resolve_handle_to_uc
+from app import guide
 from app.models import AppConfig
-from app.resolver import get_live_stream_url
+from app.resolver import is_channel_live
 
 logger = logging.getLogger(__name__)
 
@@ -30,26 +32,34 @@ def _poll():
             else:
                 logger.warning("Still cannot resolve %s, skipping poll", uc_id)
                 continue
-        url = get_live_stream_url(channel.youtube)
-        prev = live_state.get(channel.id)
-        live_state[channel.id] = url
-        if url != prev:
-            status = "LIVE" if url else "offline"
-            logger.info("Channel %s (%s): %s", channel.id, channel.name, status)
+        is_live = is_channel_live(channel.youtube)
+        was_live = live_state.get(channel.id, False)
+        live_state[channel.id] = is_live
+        if is_live != was_live:
+            logger.info("Channel %s (%s): %s", channel.id, channel.name, "LIVE" if is_live else "offline")
+        if is_live:
+            guide.maybe_refresh_program(channel.youtube)
 
     # Groups point to whichever member channel is live (priority order)
     for group in _config.groups:
-        live_state[group.id] = None
-        for cid in group.channels:
-            if live_state.get(cid):
-                live_state[group.id] = live_state[cid]
-                logger.info("Group %s using channel %s", group.id, cid)
-                break
+        prev_active = live_state.get(group.id)
+        active_cid = next((cid for cid in group.channels if live_state.get(cid)), None)
+        live_state[group.id] = active_cid
+        if active_cid != prev_active:
+            logger.info("Group %s now using channel %s", group.id, active_cid)
+
+
+def _fetch_logos(channels):
+    for ch in channels:
+        if not ch.youtube.startswith("@"):
+            guide.fetch_channel_logo(ch.youtube)
 
 
 def start(config: AppConfig, interval_seconds: int = 60):
     global _scheduler, _config
     _config = config
+
+    threading.Thread(target=_fetch_logos, args=(config.channels,), daemon=True).start()
 
     _poll()  # immediate first run
 
