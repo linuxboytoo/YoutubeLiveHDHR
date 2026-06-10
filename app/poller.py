@@ -47,9 +47,6 @@ def _poll():
             live_state[channel.id] = is_live
             if is_live != was_live:
                 logger.info("Channel %s (%s): %s", channel.id, channel.name, "LIVE" if is_live else "offline")
-            if is_live:
-                threading.Thread(target=guide.maybe_refresh_program,
-                                 args=(channel.youtube,), daemon=True).start()
 
     # Groups: pick highest-priority live member
     for group in _config.groups:
@@ -71,11 +68,14 @@ def start(config: AppConfig, interval_seconds: int = 60):
     _config = config
 
     threading.Thread(target=_fetch_logos, args=(config.channels,), daemon=True).start()
+    threading.Thread(target=guide.refresh_all_programs, args=(config.channels,), daemon=True).start()
 
     _poll()  # immediate first run
 
     _scheduler = BackgroundScheduler()
     _scheduler.add_job(_poll, "interval", seconds=interval_seconds, id="poll_live")
+    _scheduler.add_job(lambda: guide.refresh_all_programs(_config.channels),
+                       "interval", minutes=15, id="poll_guide")
     _scheduler.start()
     logger.info("Poller started, interval=%ss", interval_seconds)
 

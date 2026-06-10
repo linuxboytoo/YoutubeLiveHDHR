@@ -85,16 +85,14 @@ def fetch_channel_logo(uc_id: str) -> Optional[str]:
     return None
 
 
-def maybe_refresh_program(uc_id: str):
-    """Fetch current live stream title/description/thumbnail, rate-limited by TTL."""
+def _fetch_program(uc_id: str):
+    """Fetch program info for a single channel from its videos page (not live-gated)."""
     now = time.time()
-    if now - _program_fetched_at.get(uc_id, 0) < PROGRAM_TTL:
-        return
     try:
         result = subprocess.run(
             ["yt-dlp", "--playlist-items", "1", "--dump-json", "--no-warnings",
-             f"https://www.youtube.com/channel/{uc_id}/live"],
-            capture_output=True, text=True, timeout=30
+             f"https://www.youtube.com/channel/{uc_id}/videos"],
+            capture_output=True, text=True, timeout=60
         )
         line = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
         if not line:
@@ -116,6 +114,15 @@ def maybe_refresh_program(uc_id: str):
         logger.info("Program info updated for %s: %s", uc_id, program_info[uc_id]["title"])
     except Exception as e:
         logger.warning("Error fetching program info for %s: %s", uc_id, e)
+
+
+def refresh_all_programs(channels):
+    """Refresh program info for all channels in parallel. Called on its own schedule."""
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        for ch in channels:
+            if not ch.youtube.startswith("@"):
+                executor.submit(_fetch_program, ch.youtube)
 
 
 def build_guide_json(config, live_state: dict) -> list:
