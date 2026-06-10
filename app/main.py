@@ -1,9 +1,10 @@
 import logging
 import os
 import socket
+import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import RedirectResponse, Response
 
 from app import guide, poller
@@ -12,6 +13,7 @@ from app.resolver import get_live_stream_url, get_stream_url
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
+http_logger = logging.getLogger("http.access")
 
 DEVICE_ID = os.getenv("HDHR_DEVICE_ID", "12345678")
 DEVICE_AUTH = os.getenv("HDHR_DEVICE_AUTH", "")
@@ -45,6 +47,23 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.time()
+    response = await call_next(request)
+    ms = (time.time() - start) * 1000
+    http_logger.info(
+        "%s %s%s [%d] %.0fms | UA: %s",
+        request.method,
+        request.url.path,
+        f"?{request.url.query}" if request.url.query else "",
+        response.status_code,
+        ms,
+        request.headers.get("user-agent", "-"),
+    )
+    return response
 
 
 @app.get("/discover.json")
