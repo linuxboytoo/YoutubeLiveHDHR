@@ -1,0 +1,21 @@
+channels:
+  - id: 1001
+    name: StreamerA
+    youtube: "@streamera"
+    fallback:
+      type: playlist
+      url: "@streamera/videos"
+  - id: 1002
+    name: StreamerB
+    youtube: "@streamerb"
+    fallback:
+      type: url
+      url: "https://youtube.com/watch?v=xxxx"
+
+groups:
+  - id: 1000
+    name: Best Live Right Now
+    channels: [1001, 1002]
+    fallback:
+      type: playlist
+      url: "@somebackgroundchannel/videos"

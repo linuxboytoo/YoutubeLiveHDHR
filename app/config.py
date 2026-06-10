@@ -1,0 +1,113 @@
+import logging
+import os
+import re
+import subprocess
+from typing import Optional
+
+import yaml
+
+from app.models import AppConfig, ChannelConfig, FallbackConfig, GroupConfig
+
+logger = logging.getLogger(__name__)
+
+CONFIG_PATH = os.getenv("CONFIG_PATH", "/config/channels.yaml")
+
+# Internal caches: @handle -> UC ID or PL ID
+_handle_cache: dict[str, str] = {}
+_playlist_cache: dict[str, str] = {}
+
+
+def _resolve_handle_to_uc(handle: str) -> Optional[str]:
+    """Resolve a YouTube @handle to a UC channel ID using yt-dlp."""
+    if handle in _handle_cache:
+        return _handle_cache[handle]
+
+    url = f"https://www.youtube.com/{handle}"
+    try:
+        result = subprocess.run(
+            ["yt-dlp", "--no-playlist", "--print", "channel_id", url],
+            capture_output=True, text=True, timeout=30
+        )
+        uc_id = result.stdout.strip()
+        if uc_id and uc_id.startswith("UC"):
+            _handle_cache[handle] = uc_id
+            logger.info("Resolved %s -> %s", handle, uc_id)
+            return uc_id
+        logger.warning("Could not resolve handle %s: %s", handle, result.stderr.strip())
+    except Exception as e:
+        logger.warning("Error resolving handle %s: %s", handle, e)
+    return None
+
+
+def _resolve_playlist_handle(url_or_handle: str) -> Optional[str]:
+    """Resolve a playlist handle/URL to a PL ID."""
+    if url_or_handle in _playlist_cache:
+        return _playlist_cache[url_or_handle]
+
+    # If it's already a PL ID, return as-is
+    if re.match(r"^PL[A-Za-z0-9_-]+$", url_or_handle):
+        return url_or_handle
+
+    url = url_or_handle if url_or_handle.startswith("http") else f"https://www.youtube.com/{url_or_handle}"
+    try:
+        result = subprocess.run(
+            ["yt-dlp", "--flat-playlist", "--print", "playlist_id", "--playlist-items", "1", url],
+            capture_output=True, text=True, timeout=30
+        )
+        pl_id = result.stdout.strip().splitlines()[0] if result.stdout.strip() else None
+        if pl_id:
+            _playlist_cache[url_or_handle] = pl_id
+            logger.info("Resolved playlist %s -> %s", url_or_handle, pl_id)
+            return pl_id
+        logger.warning("Could not resolve playlist %s: %s", url_or_handle, result.stderr.strip())
+    except Exception as e:
+        logger.warning("Error resolving playlist %s: %s", url_or_handle, e)
+    return None
+
+
+def load_config() -> AppConfig:
+    """Load and validate channels.yaml, resolving handles."""
+    with open(CONFIG_PATH) as f:
+        raw = yaml.safe_load(f)
+
+    channels = []
+    for ch in raw.get("channels", []):
+        fallback = None
+        if "fallback" in ch:
+            fallback = FallbackConfig(**ch["fallback"])
+            if fallback.type == "playlist":
+                resolved = _resolve_playlist_handle(fallback.url)
+                if resolved:
+                    fallback = FallbackConfig(type="playlist", url=f"https://www.youtube.com/playlist?list={resolved}")
+
+        handle = ch["youtube"]
+        uc_id = _resolve_handle_to_uc(handle) if handle.startswith("@") else handle
+        if not uc_id:
+            logger.warning("Skipping channel %s — could not resolve handle %s", ch["id"], handle)
+            continue
+
+        channels.append(ChannelConfig(
+            id=ch["id"],
+            name=ch["name"],
+            youtube=uc_id,
+            fallback=fallback,
+        ))
+
+    groups = []
+    for grp in raw.get("groups", []):
+        fallback = None
+        if "fallback" in grp:
+            fallback = FallbackConfig(**grp["fallback"])
+            if fallback.type == "playlist":
+                resolved = _resolve_playlist_handle(fallback.url)
+                if resolved:
+                    fallback = FallbackConfig(type="playlist", url=f"https://www.youtube.com/playlist?list={resolved}")
+
+        groups.append(GroupConfig(
+            id=grp["id"],
+            name=grp["name"],
+            channels=grp["channels"],
+            fallback=fallback,
+        ))
+
+    return AppConfig(channels=channels, groups=groups)
