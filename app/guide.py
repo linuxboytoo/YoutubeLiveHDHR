@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import subprocess
 import time
 import xml.etree.ElementTree as ET
@@ -12,6 +13,46 @@ program_info: dict[str, dict] = {}
 _program_fetched_at: dict[str, float] = {}
 
 PROGRAM_TTL = 300  # seconds between program info refreshes
+
+_CACHE_PATH: Optional[str] = None
+
+
+def init_cache(config_path: str):
+    """Call once at startup with the config file path to enable disk persistence."""
+    global _CACHE_PATH
+    _CACHE_PATH = os.path.join(os.path.dirname(config_path), "guide_cache.json")
+    _load_cache()
+
+
+def _load_cache():
+    if not _CACHE_PATH:
+        return
+    try:
+        with open(_CACHE_PATH) as f:
+            data = json.load(f)
+        _logo_cache.update(data.get("logos", {}))
+        program_info.update(data.get("programs", {}))
+        _program_fetched_at.update({k: data.get("fetched_at", {}).get(k, 0)
+                                     for k in program_info})
+        logger.info("Loaded guide cache: %d logos, %d programs", len(_logo_cache), len(program_info))
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        logger.warning("Could not load guide cache: %s", e)
+
+
+def _save_cache():
+    if not _CACHE_PATH:
+        return
+    try:
+        with open(_CACHE_PATH, "w") as f:
+            json.dump({
+                "logos": _logo_cache,
+                "programs": program_info,
+                "fetched_at": _program_fetched_at,
+            }, f, indent=2)
+    except Exception as e:
+        logger.warning("Could not save guide cache: %s", e)
 
 
 def fetch_channel_logo(uc_id: str) -> Optional[str]:
@@ -35,6 +76,7 @@ def fetch_channel_logo(uc_id: str) -> Optional[str]:
                 best = max(thumbs, key=squareness)
                 url = best["url"]
                 _logo_cache[uc_id] = url
+                _save_cache()
                 logger.info("Logo cached for %s", uc_id)
                 return url
     except Exception as e:
@@ -70,6 +112,7 @@ def maybe_refresh_program(uc_id: str):
             "start_time": info.get("timestamp") or info.get("release_timestamp") or int(now),
         }
         _program_fetched_at[uc_id] = now
+        _save_cache()
         logger.info("Program info updated for %s: %s", uc_id, program_info[uc_id]["title"])
     except Exception as e:
         logger.warning("Error fetching program info for %s: %s", uc_id, e)

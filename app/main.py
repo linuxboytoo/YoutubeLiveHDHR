@@ -37,6 +37,7 @@ def _get_local_ip() -> str:
 async def lifespan(app: FastAPI):
     global _config
     logger.info("Loading config...")
+    guide.init_cache(os.getenv("CONFIG_PATH", "/config/channels.yaml"))
     _config = load_config()
     poller.start(_config, POLL_INTERVAL)
     yield
