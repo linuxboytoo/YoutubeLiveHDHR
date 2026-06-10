@@ -165,6 +165,13 @@ def stream(channel_id: int):
     raise HTTPException(status_code=503, detail="No stream available")
 
 
+@app.get("/guide.json")
+def guide_json():
+    if _config is None:
+        raise HTTPException(status_code=503, detail="Config not loaded")
+    return guide.build_guide_json(_config, poller.live_state)
+
+
 @app.get("/epg.xml")
 def epg_xml():
     if _config is None:

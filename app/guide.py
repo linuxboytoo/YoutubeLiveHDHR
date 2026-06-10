@@ -75,6 +75,60 @@ def maybe_refresh_program(uc_id: str):
         logger.warning("Error fetching program info for %s: %s", uc_id, e)
 
 
+def build_guide_json(config, live_state: dict) -> list:
+    """Build HDHR-format guide.json consumed natively by Jellyfin/Plex."""
+    now = int(time.time())
+    entries = []
+
+    for ch in config.channels:
+        prog = program_info.get(ch.youtube, {})
+        entry = {
+            "GuideNumber": str(ch.id),
+            "GuideName": ch.name,
+        }
+        logo = _logo_cache.get(ch.youtube)
+        if logo:
+            entry["ImageURL"] = logo
+        if prog:
+            start = prog.get("start_time", now)
+            entry["Guide"] = [{
+                "StartTime": start,
+                "EndTime": start + 3600,
+                "Title": prog.get("title", ch.name),
+                "Synopsis": prog.get("description", ""),
+                "ImageURL": prog.get("thumbnail", ""),
+            }]
+        entries.append(entry)
+
+    for grp in config.groups:
+        prog = {}
+        logo = None
+        for cid in grp.channels:
+            member = next((c for c in config.channels if c.id == cid), None)
+            if member and live_state.get(cid):
+                prog = program_info.get(member.youtube, {})
+                logo = _logo_cache.get(member.youtube)
+                break
+        entry = {
+            "GuideNumber": str(grp.id),
+            "GuideName": grp.name,
+        }
+        if logo:
+            entry["ImageURL"] = logo
+        if prog:
+            start = prog.get("start_time", now)
+            entry["Guide"] = [{
+                "StartTime": start,
+                "EndTime": start + 3600,
+                "Title": prog.get("title", grp.name),
+                "Synopsis": prog.get("description", ""),
+                "ImageURL": prog.get("thumbnail", ""),
+            }]
+        entries.append(entry)
+
+    return entries
+
+
 def build_xmltv(config, live_state: dict) -> str:
     root = ET.Element("tv", attrib={"generator-info-name": "YoutubeLiveHDHR"})
 
