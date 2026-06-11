@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import socket
@@ -5,11 +6,10 @@ import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import Response, StreamingResponse
 
 from app import guide, poller
 from app.config import load_config
-from app.resolver import get_live_stream_url, get_stream_url
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -155,48 +155,109 @@ def lineup():
     return entries
 
 
+async def _proxy_stream(youtube_url: str):
+    """Pipe a YouTube stream through yt-dlp → ffmpeg → MPEG-TS to the client.
+
+    Jellyfin's transcoder cannot access YouTube CDN URLs directly (auth headers
+    required), so we proxy the stream server-side instead of redirecting.
+    """
+    logger.info("Stream proxy start: %s", youtube_url)
+
+    ytdlp = await asyncio.create_subprocess_exec(
+        "yt-dlp",
+        "--format", "best[protocol^=m3u8]/best",
+        "--no-part",
+        "--no-warnings",
+        "-o", "-",
+        youtube_url,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.DEVNULL,
+    )
+
+    ffmpeg = await asyncio.create_subprocess_exec(
+        "ffmpeg",
+        "-loglevel", "error",
+        "-i", "pipe:0",
+        "-c", "copy",
+        "-f", "mpegts",
+        "pipe:1",
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.DEVNULL,
+    )
+
+    async def _pipe_to_ffmpeg():
+        """Forward yt-dlp stdout → ffmpeg stdin."""
+        try:
+            while True:
+                chunk = await ytdlp.stdout.read(65536)
+                if not chunk:
+                    break
+                ffmpeg.stdin.write(chunk)
+                await ffmpeg.stdin.drain()
+        except Exception as e:
+            logger.debug("yt-dlp pipe ended: %s", e)
+        finally:
+            try:
+                ffmpeg.stdin.close()
+            except Exception:
+                pass
+
+    pipe_task = asyncio.create_task(_pipe_to_ffmpeg())
+
+    try:
+        while True:
+            chunk = await ffmpeg.stdout.read(65536)
+            if not chunk:
+                break
+            yield chunk
+    except Exception as e:
+        logger.warning("Stream proxy error: %s", e)
+    finally:
+        logger.info("Stream proxy end: %s", youtube_url)
+        pipe_task.cancel()
+        for proc in (ffmpeg, ytdlp):
+            try:
+                proc.kill()
+            except Exception:
+                pass
+        await asyncio.gather(pipe_task, return_exceptions=True)
+
+
 @app.get("/auto/v{channel_id}")
-def stream(channel_id: int):
+async def stream(channel_id: int):
     if _config is None:
         raise HTTPException(status_code=503, detail="Config not loaded")
 
     channel = next((c for c in _config.channels if c.id == channel_id), None)
     group = next((g for g in _config.groups if g.id == channel_id), None)
 
-    # Resolve which UC ID to stream from
-    uc_id = None
+    youtube_url = None
+
     if channel and poller.live_state.get(channel_id):
-        uc_id = channel.youtube
+        youtube_url = f"https://www.youtube.com/channel/{channel.youtube}/live"
     elif group:
-        active_cid = poller.live_state.get(channel_id)  # stores active member channel id
+        active_cid = poller.live_state.get(channel_id)
         if active_cid:
             member = next((c for c in _config.channels if c.id == active_cid), None)
             if member:
-                uc_id = member.youtube
+                youtube_url = f"https://www.youtube.com/channel/{member.youtube}/live"
 
-    if uc_id:
-        live_url = get_live_stream_url(uc_id)
-        if live_url:
-            return RedirectResponse(url=live_url, status_code=302)
+    if not youtube_url:
+        target = channel or group
+        if target is None:
+            raise HTTPException(status_code=404, detail="Channel not found")
+        if target.fallback:
+            youtube_url = target.fallback.url
 
-    # Find channel or group config for fallback
+    if not youtube_url:
+        raise HTTPException(status_code=503, detail="No stream available")
 
-    target = channel or group
-    if target is None:
-        raise HTTPException(status_code=404, detail="Channel not found")
-
-    if target.fallback:
-        fb_url = target.fallback.url
-        if target.fallback.type == "playlist":
-            resolved = get_stream_url(fb_url)
-            if resolved:
-                return RedirectResponse(url=resolved, status_code=302)
-        elif target.fallback.type == "url":
-            resolved = get_stream_url(fb_url)
-            if resolved:
-                return RedirectResponse(url=resolved, status_code=302)
-
-    raise HTTPException(status_code=503, detail="No stream available")
+    return StreamingResponse(
+        _proxy_stream(youtube_url),
+        media_type="video/mp2t",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 @app.get("/guide.json")
