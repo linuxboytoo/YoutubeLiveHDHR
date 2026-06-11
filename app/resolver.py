@@ -25,7 +25,7 @@ def get_live_stream_url(uc_id: str) -> Optional[str]:
     channel_url = f"https://www.youtube.com/channel/{uc_id}/live"
     try:
         result = subprocess.run(
-            ["yt-dlp", "--no-playlist", "--format", "best[ext=mp4]/best",
+            ["yt-dlp", "--no-playlist", "--format", "best[protocol^=m3u8]/best",
              "--get-url", channel_url],
             capture_output=True, text=True, timeout=60
         )
@@ -45,7 +45,7 @@ def get_stream_url(source_url: str) -> Optional[str]:
             [
                 "yt-dlp",
                 "--no-playlist",
-                "--format", "best[ext=mp4]/best",
+                "--format", "best[protocol^=m3u8]/best",
                 "--get-url",
                 source_url,
             ],
