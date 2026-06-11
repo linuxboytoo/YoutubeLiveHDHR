@@ -143,9 +143,12 @@ def lineup():
 
     for grp in _config.groups:
         gn = str(grp.id)
+        active_cid = poller.live_state.get(grp.id)
+        active_member = next((c for c in _config.channels if c.id == active_cid), None) if active_cid else None
+        guide_name = f"{grp.name} • {active_member.name}" if active_member else grp.name
         entry = {
             "GuideNumber": gn,
-            "GuideName": grp.name,
+            "GuideName": guide_name,
             "URL": f"{base}/auto/v{grp.id}",
             "Guide_ID": gn,
             "Station": gn,

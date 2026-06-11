@@ -161,24 +161,29 @@ def build_guide_json(config, live_state: dict) -> list:
     for grp in config.groups:
         prog = {}
         logo = None
+        active_member = None
         for cid in grp.channels:
             member = next((c for c in config.channels if c.id == cid), None)
             if member and live_state.get(cid):
+                active_member = member
                 prog = program_info.get(member.youtube, {})
                 logo = _logo_cache.get(member.youtube)
                 break
+        # Show the active channel name in the group guide name so viewers know who's on
+        guide_name = f"{grp.name} • {active_member.name}" if active_member else grp.name
         entry = {
             "GuideNumber": str(grp.id),
-            "GuideName": grp.name,
+            "GuideName": guide_name,
         }
         if logo:
             entry["ImageURL"] = logo
         if prog:
             start = prog.get("start_time", now)
+            prog_title = prog.get("title", active_member.name if active_member else grp.name)
             entry["Guide"] = [{
                 "StartTime": start,
                 "EndTime": start + 3600,
-                "Title": prog.get("title", grp.name),
+                "Title": f"{active_member.name}: {prog_title}" if active_member else prog_title,
                 "Synopsis": prog.get("description", ""),
                 "ImageURL": prog.get("thumbnail", ""),
             }]
@@ -218,25 +223,33 @@ def build_xmltv(config, live_state: dict) -> str:
 
     for grp in config.groups:
         prog = {}
+        active_member = None
         for cid in grp.channels:
             member = next((c for c in config.channels if c.id == cid), None)
             if member and live_state.get(cid):
+                active_member = member
                 prog = program_info.get(member.youtube, {})
                 break
         start = prog.get("start_time", now)
-        _add_programme(root, str(grp.id), prog, grp.name, start, start + 3600)
+        # Prefix active channel name so the EPG shows who's currently on
+        fallback = f"{grp.name} • {active_member.name}" if active_member else grp.name
+        _add_programme(root, str(grp.id), prog, fallback, start, start + 3600,
+                       title_prefix=active_member.name if active_member else None)
 
     ET.indent(root)
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding="unicode")
 
 
-def _add_programme(root, channel_id: str, prog: dict, fallback_name: str, start: int, stop: int):
+def _add_programme(root, channel_id: str, prog: dict, fallback_name: str, start: int, stop: int,
+                   title_prefix: str = None):
     fmt = "%Y%m%d%H%M%S +0000"
     el = ET.SubElement(root, "programme",
                        start=time.strftime(fmt, time.gmtime(start)),
                        stop=time.strftime(fmt, time.gmtime(stop)),
                        channel=channel_id)
-    ET.SubElement(el, "title").text = prog.get("title", fallback_name)
+    raw_title = prog.get("title", fallback_name)
+    title = f"{title_prefix}: {raw_title}" if title_prefix else raw_title
+    ET.SubElement(el, "title").text = title
     if prog.get("description"):
         ET.SubElement(el, "desc").text = prog["description"]
     if prog.get("thumbnail"):
