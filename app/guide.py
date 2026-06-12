@@ -205,7 +205,7 @@ def build_guide_json(config, live_state: dict) -> list:
             entry["Guide"] = [{
                 "StartTime": start,
                 "EndTime": end,
-                "Title": f"{active_member.name}: {prog_title}",
+                "Title": f"{grp.name} | {active_member.name}: {prog_title}",
                 "Synopsis": prog.get("description", ""),
                 "ImageURL": prog.get("thumbnail", ""),
             }]
@@ -263,7 +263,7 @@ def build_xmltv(config, live_state: dict) -> str:
 
         if active_member:
             start, end = _program_window(prog, now)
-            title = f"{active_member.name}: {prog.get('title', active_member.name)}"
+            title = f"{grp.name} | {active_member.name}: {prog.get('title', active_member.name)}"
             _add_programme(root, str(i), title,
                            prog.get("description", ""), prog.get("thumbnail", ""), start, end)
         else:
