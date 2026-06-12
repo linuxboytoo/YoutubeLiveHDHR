@@ -62,14 +62,18 @@ header h1 { font-size: 16px; font-weight: 600; color: #fff; flex: 1; }
 .form-group input { width: 100%; background: #111; border: 1px solid #2e2e2e; border-radius: 6px; padding: 8px 11px; color: #e0e0e0; font-size: 13px; outline: none; transition: border-color 0.15s; }
 .form-group input:focus { border-color: #4fc3f7; }
 
-.checkbox-list { max-height: 230px; overflow-y: auto; border: 1px solid #2e2e2e; border-radius: 6px; background: #111; }
-.cb-item { display: flex; align-items: center; gap: 9px; padding: 9px 12px; cursor: pointer; border-bottom: 1px solid #1e1e1e; transition: background 0.1s; }
-.cb-item:last-child { border-bottom: none; }
-.cb-item:hover { background: #181818; }
-.cb-item input[type=checkbox] { width: 14px; height: 14px; accent-color: #4fc3f7; cursor: pointer; flex-shrink: 0; }
-.cb-label { flex: 1; font-size: 12px; color: #ccc; }
-.cb-live { font-size: 10px; color: #43a047; font-weight: 600; }
-.cb-sub { font-size: 10px; color: #555; margin-left: auto; font-family: monospace; }
+.grp-ch-list { border: 1px solid #2e2e2e; border-radius: 6px; background: #111; max-height: 260px; overflow-y: auto; }
+.grp-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #1a1a1a; }
+.grp-row:last-child { border-bottom: none; }
+.grp-row input[type=checkbox] { width: 14px; height: 14px; accent-color: #4fc3f7; cursor: pointer; flex-shrink: 0; }
+.grp-rank { font-size: 10px; color: #555; width: 20px; text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.arrow-col { display: flex; flex-direction: column; gap: 1px; flex-shrink: 0; }
+.arrow-btn { background: #1e1e1e; border: 1px solid #2a2a2a; border-radius: 3px; color: #666; font-size: 8px; padding: 1px 4px; cursor: pointer; line-height: 1.3; }
+.arrow-btn:hover:not(:disabled) { color: #ccc; border-color: #444; }
+.arrow-btn:disabled { opacity: 0.2; cursor: default; }
+.grp-ch-name { flex: 1; font-size: 12px; color: #ccc; }
+.grp-live { font-size: 10px; color: #43a047; font-weight: 600; flex-shrink: 0; }
+.empty-list { padding: 12px; font-size: 12px; color: #444; text-align: center; }
 
 .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 
@@ -140,8 +144,8 @@ header h1 { font-size: 16px; font-weight: 600; color: #fff; flex: 1; }
       <input type="text" id="grp-name" placeholder="e.g. Deconstruction" autocomplete="off">
     </div>
     <div class="form-group">
-      <label>Member Channels</label>
-      <div class="checkbox-list" id="grp-channels"></div>
+      <label>Channels — check to include, drag priority with arrows</label>
+      <div id="grp-channels"></div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" data-close="group-modal">Cancel</button>
@@ -293,35 +297,81 @@ document.getElementById('groups-list').addEventListener('click', e => {
 
 document.getElementById('add-group-btn').addEventListener('click', () => openGrpModal(null));
 
+let grpOrder = []; // selected channel IDs in priority order
+
 function openGrpModal(id) {
   editingGrpId = id;
   const grp = id != null ? S.groups.find(g => g.id === id) : null;
   document.getElementById('grp-modal-title').textContent = grp ? 'Edit Group' : 'Add Group';
   document.getElementById('grp-name').value = grp ? grp.name : '';
-  const members = grp ? (grp.channels || []) : [];
-  const chs = S.channels || [];
-  const listEl = document.getElementById('grp-channels');
-  if (!chs.length) {
-    listEl.innerHTML = '<div style="padding:12px;font-size:12px;color:#555">No channels yet — add channels first.</div>';
-  } else {
-    listEl.innerHTML = chs.map(ch => `
-      <label class="cb-item">
-        <input type="checkbox" value="${ch.id}" ${members.includes(ch.id) ? 'checked' : ''}>
-        <span class="cb-label">${esc(ch.name)}</span>
-        ${ch.live ? '<span class="cb-live">● LIVE</span>' : ''}
-        <span class="cb-sub">${esc(ch.youtube)}</span>
-      </label>`).join('');
-  }
+  grpOrder = grp ? [...(grp.channels || [])] : [];
+  renderGrpChannels();
   showModal('group-modal');
   document.getElementById('grp-name').focus();
 }
+
+function renderGrpChannels() {
+  const chs = S.channels || [];
+  const listEl = document.getElementById('grp-channels');
+  if (!chs.length) {
+    listEl.innerHTML = '<div class="empty-list">No channels yet — add channels first.</div>';
+    return;
+  }
+  // Selected first (in priority order), then unselected
+  const selected = grpOrder.map(cid => chs.find(c => c.id === cid)).filter(Boolean);
+  const unselected = chs.filter(c => !grpOrder.includes(c.id));
+
+  const rows = [
+    ...selected.map((ch, idx) => `
+      <div class="grp-row" data-id="${ch.id}">
+        <input type="checkbox" checked data-cb="${ch.id}">
+        <span class="grp-rank">#${idx + 1}</span>
+        <div class="arrow-col">
+          <button class="arrow-btn" data-up="${ch.id}" ${idx === 0 ? 'disabled' : ''}>▲</button>
+          <button class="arrow-btn" data-dn="${ch.id}" ${idx === selected.length - 1 ? 'disabled' : ''}>▼</button>
+        </div>
+        <div class="live-dot ${ch.live ? 'on' : 'off'}"></div>
+        <span class="grp-ch-name">${esc(ch.name)}</span>
+        ${ch.live ? '<span class="grp-live">LIVE</span>' : ''}
+      </div>`),
+    ...unselected.map(ch => `
+      <div class="grp-row" data-id="${ch.id}">
+        <input type="checkbox" data-cb="${ch.id}">
+        <span class="grp-rank"></span>
+        <div class="arrow-col"><button class="arrow-btn" disabled>▲</button><button class="arrow-btn" disabled>▼</button></div>
+        <div class="live-dot ${ch.live ? 'on' : 'off'}"></div>
+        <span class="grp-ch-name" style="color:#666">${esc(ch.name)}</span>
+        ${ch.live ? '<span class="grp-live">LIVE</span>' : ''}
+      </div>`)
+  ];
+  listEl.innerHTML = `<div class="grp-ch-list">${rows.join('')}</div>`;
+}
+
+document.getElementById('grp-channels').addEventListener('change', e => {
+  const cb = e.target.closest('[data-cb]');
+  if (!cb) return;
+  const id = parseInt(cb.dataset.cb);
+  if (cb.checked) { if (!grpOrder.includes(id)) grpOrder.push(id); }
+  else { grpOrder = grpOrder.filter(x => x !== id); }
+  renderGrpChannels();
+});
+
+document.getElementById('grp-channels').addEventListener('click', e => {
+  const btn = e.target.closest('[data-up],[data-dn]');
+  if (!btn) return;
+  const id = parseInt(btn.dataset.up ?? btn.dataset.dn);
+  const idx = grpOrder.indexOf(id);
+  if ('up' in btn.dataset && idx > 0) [grpOrder[idx-1], grpOrder[idx]] = [grpOrder[idx], grpOrder[idx-1]];
+  if ('dn' in btn.dataset && idx < grpOrder.length - 1) [grpOrder[idx+1], grpOrder[idx]] = [grpOrder[idx], grpOrder[idx+1]];
+  renderGrpChannels();
+});
 
 document.getElementById('save-group-btn').addEventListener('click', saveGroup);
 
 async function saveGroup() {
   const name = document.getElementById('grp-name').value.trim();
   if (!name) { toast('Group name required', true); return; }
-  const channels = Array.from(document.querySelectorAll('#grp-channels input:checked')).map(cb => parseInt(cb.value));
+  const channels = [...grpOrder];
   const url = editingGrpId != null ? `/api/groups/${editingGrpId}` : '/api/groups';
   const method = editingGrpId != null ? 'PUT' : 'POST';
   try {
