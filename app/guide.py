@@ -85,15 +85,17 @@ def fetch_channel_logo(uc_id: str) -> Optional[str]:
     return None
 
 
-def _fetch_program(uc_id: str):
-    """Fetch program info for a single channel from its videos page (not live-gated)."""
+def _fetch_program(uc_id: str, live: bool = False):
+    """Fetch program info. Uses /live URL when live so the title/thumbnail reflect the current stream."""
     now = time.time()
     if now - _program_fetched_at.get(uc_id, 0) < PROGRAM_TTL:
         return
+    # Live streams have their metadata at /live; offline channels use /videos for latest upload
+    url = (f"https://www.youtube.com/channel/{uc_id}/live" if live
+           else f"https://www.youtube.com/channel/{uc_id}/videos")
     try:
         result = subprocess.run(
-            ["yt-dlp", "--playlist-items", "1", "--dump-json", "--no-warnings",
-             f"https://www.youtube.com/channel/{uc_id}/videos"],
+            ["yt-dlp", "--playlist-items", "1", "--dump-json", "--no-warnings", url],
             capture_output=True, text=True, timeout=60
         )
         line = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
@@ -118,19 +120,20 @@ def _fetch_program(uc_id: str):
         logger.warning("Error fetching program info for %s: %s", uc_id, e)
 
 
-def force_refresh_program(uc_id: str):
-    """Bypass TTL and immediately re-fetch program info. Call on live state change."""
+def force_refresh_program(uc_id: str, is_live: bool = False):
+    """Bypass TTL and re-fetch program info. Pass is_live=True to fetch the current stream title."""
     _program_fetched_at.pop(uc_id, None)
-    _fetch_program(uc_id)
+    _fetch_program(uc_id, live=is_live)
 
 
-def refresh_all_programs(channels):
+def refresh_all_programs(channels, live_state: dict = None):
     """Refresh program info for all channels in parallel. Called on its own schedule."""
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=6) as executor:
         for ch in channels:
             if not ch.youtube.startswith("@"):
-                executor.submit(_fetch_program, ch.youtube)
+                is_live = bool(live_state and live_state.get(ch.id))
+                executor.submit(_fetch_program, ch.youtube, is_live)
 
 
 def build_guide_json(config, live_state: dict) -> list:
