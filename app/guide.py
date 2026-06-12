@@ -146,7 +146,8 @@ def _program_window(prog: dict, is_live: bool, now: int) -> tuple[int, int]:
     """
     if is_live:
         raw_start = prog.get("start_time", now) if prog else now
-        start = min(raw_start, now)  # never in the future
+        # Cap start to at most 30 min ago so EPG window stays compact regardless of stream age
+        start = max(min(raw_start, now), now - 1800)
         end = now + LIVE_SLOT_HOURS * 3600
     else:
         # Align to the current hour boundary for a tidy grid
