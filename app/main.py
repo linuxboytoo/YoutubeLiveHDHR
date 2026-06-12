@@ -2,14 +2,17 @@ import asyncio
 import logging
 import os
 import socket
+import threading
 import time
 from contextlib import asynccontextmanager
 
+import yaml as _yaml
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
+from pydantic import BaseModel
 
 from app import guide, poller
-from app.config import load_config
+from app.config import CONFIG_PATH, load_config
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -285,3 +288,118 @@ def reload_config():
     _config = load_config()
     poller.reload(_config)
     return {"status": "reloaded"}
+
+
+# ── Config UI helpers ─────────────────────────────────────────────────────────
+
+class _ChannelBody(BaseModel):
+    name: str
+    youtube: str
+
+class _GroupBody(BaseModel):
+    name: str
+    channels: list[int] = []
+
+def _read_yaml() -> dict:
+    with open(CONFIG_PATH) as f:
+        return _yaml.safe_load(f) or {"channels": [], "groups": []}
+
+def _write_yaml(data: dict):
+    with open(CONFIG_PATH, "w") as f:
+        _yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+def _do_reload():
+    def _task():
+        global _config
+        _config = load_config()
+        poller.reload(_config)
+    threading.Thread(target=_task, daemon=True).start()
+
+
+# ── Config API ────────────────────────────────────────────────────────────────
+
+@app.get("/api/config")
+def api_config():
+    data = _read_yaml()
+    ls = poller.live_state
+    for ch in data.get("channels", []):
+        ch["live"] = bool(ls.get(ch["id"]))
+    for grp in data.get("groups", []):
+        grp["live"] = ls.get(grp["id"]) is not None
+    return data
+
+@app.post("/api/channels")
+def api_add_channel(body: _ChannelBody):
+    data = _read_yaml()
+    channels = data.setdefault("channels", [])
+    new_id = max((c["id"] for c in channels), default=1000) + 1
+    entry = {"id": new_id, "name": body.name, "youtube": body.youtube}
+    channels.append(entry)
+    _write_yaml(data)
+    _do_reload()
+    return entry
+
+@app.put("/api/channels/{channel_id}")
+def api_update_channel(channel_id: int, body: _ChannelBody):
+    data = _read_yaml()
+    channels = data.get("channels", [])
+    idx = next((i for i, c in enumerate(channels) if c["id"] == channel_id), None)
+    if idx is None:
+        raise HTTPException(status_code=404)
+    channels[idx]["name"] = body.name
+    channels[idx]["youtube"] = body.youtube
+    _write_yaml(data)
+    _do_reload()
+    return channels[idx]
+
+@app.delete("/api/channels/{channel_id}")
+def api_delete_channel(channel_id: int):
+    data = _read_yaml()
+    data["channels"] = [c for c in data.get("channels", []) if c["id"] != channel_id]
+    for grp in data.get("groups", []):
+        grp["channels"] = [cid for cid in grp.get("channels", []) if cid != channel_id]
+    _write_yaml(data)
+    _do_reload()
+    return {"ok": True}
+
+@app.post("/api/groups")
+def api_add_group(body: _GroupBody):
+    data = _read_yaml()
+    groups = data.setdefault("groups", [])
+    new_id = max((g["id"] for g in groups), default=2000) + 1
+    entry = {"id": new_id, "name": body.name, "channels": body.channels}
+    groups.append(entry)
+    _write_yaml(data)
+    _do_reload()
+    return entry
+
+@app.put("/api/groups/{group_id}")
+def api_update_group(group_id: int, body: _GroupBody):
+    data = _read_yaml()
+    groups = data.get("groups", [])
+    idx = next((i for i, g in enumerate(groups) if g["id"] == group_id), None)
+    if idx is None:
+        raise HTTPException(status_code=404)
+    groups[idx]["name"] = body.name
+    groups[idx]["channels"] = body.channels
+    _write_yaml(data)
+    _do_reload()
+    return groups[idx]
+
+@app.delete("/api/groups/{group_id}")
+def api_delete_group(group_id: int):
+    data = _read_yaml()
+    data["groups"] = [g for g in data.get("groups", []) if g["id"] != group_id]
+    _write_yaml(data)
+    _do_reload()
+    return {"ok": True}
+
+
+# ── Config UI ─────────────────────────────────────────────────────────────────
+
+@app.get("/ui")
+@app.get("/ui/")
+def ui_page():
+    html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "ui.html")
+    with open(html_path) as f:
+        return Response(content=f.read(), media_type="text/html")

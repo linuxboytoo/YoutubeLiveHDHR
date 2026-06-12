@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YoutubeLiveHDHR Config</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0d0d0d; color: #e0e0e0; min-height: 100vh; }
+
+header { background: #161616; border-bottom: 1px solid #2a2a2a; padding: 14px 24px; display: flex; align-items: center; gap: 10px; }
+.logo { color: #ff4444; font-size: 20px; }
+header h1 { font-size: 16px; font-weight: 600; color: #fff; flex: 1; }
+.reload-btn { background: none; border: 1px solid #333; border-radius: 6px; color: #888; padding: 5px 10px; cursor: pointer; font-size: 13px; transition: all 0.15s; }
+.reload-btn:hover { border-color: #555; color: #ccc; }
+
+.tabs { display: flex; border-bottom: 1px solid #222; background: #161616; padding: 0 24px; }
+.tab { padding: 11px 18px; cursor: pointer; font-size: 13px; color: #666; border-bottom: 2px solid transparent; transition: color 0.15s; user-select: none; }
+.tab.active { color: #4fc3f7; border-bottom-color: #4fc3f7; }
+.tab:hover:not(.active) { color: #bbb; }
+.tab-badge { background: #252525; border-radius: 10px; padding: 1px 7px; font-size: 11px; margin-left: 6px; color: #888; }
+.tab.active .tab-badge { background: #1a3a4a; color: #4fc3f7; }
+
+.content { padding: 20px 24px; max-width: 860px; }
+.section-header { display: flex; align-items: center; margin-bottom: 14px; }
+.section-header h2 { font-size: 13px; font-weight: 500; color: #888; text-transform: uppercase; letter-spacing: 0.8px; flex: 1; }
+
+.btn { display: inline-flex; align-items: center; gap: 5px; padding: 7px 13px; border-radius: 6px; border: none; cursor: pointer; font-size: 12px; font-weight: 500; transition: opacity 0.15s; white-space: nowrap; }
+.btn:hover { opacity: 0.82; }
+.btn-primary { background: #4fc3f7; color: #111; }
+.btn-danger { background: #c62828; color: #fff; }
+.btn-ghost { background: #232323; border: 1px solid #333; color: #bbb; }
+.btn-sm { padding: 4px 9px; font-size: 11px; }
+
+.channel-list { display: flex; flex-direction: column; gap: 6px; }
+.card { background: #181818; border: 1px solid #242424; border-radius: 8px; padding: 13px 16px; display: flex; align-items: center; gap: 12px; }
+.live-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.live-dot.on { background: #43a047; box-shadow: 0 0 5px #43a047aa; }
+.live-dot.off { background: #333; }
+.info { flex: 1; min-width: 0; }
+.info-name { font-size: 13px; font-weight: 500; color: #ddd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.info-sub { font-size: 11px; color: #666; margin-top: 2px; font-family: monospace; }
+.actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+.group-card { background: #181818; border: 1px solid #242424; border-radius: 8px; padding: 13px 16px; margin-bottom: 6px; }
+.group-header { display: flex; align-items: center; gap: 10px; }
+.group-name { font-size: 13px; font-weight: 500; color: #ddd; flex: 1; }
+.ch-num { font-size: 11px; color: #555; background: #1e1e1e; border: 1px solid #2a2a2a; border-radius: 4px; padding: 1px 6px; flex-shrink: 0; }
+.members { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+.pill { background: #1e1e1e; border: 1px solid #2a2a2a; border-radius: 4px; padding: 3px 8px; font-size: 11px; color: #999; display: inline-flex; align-items: center; gap: 5px; }
+.pill-dot { width: 6px; height: 6px; border-radius: 50%; }
+.pill-dot.on { background: #43a047; }
+.pill-dot.off { background: #333; }
+.no-members { font-size: 11px; color: #444; margin-top: 8px; }
+
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.modal-overlay.hidden { display: none; }
+.modal { background: #1a1a1a; border: 1px solid #2e2e2e; border-radius: 10px; padding: 22px; width: 420px; max-width: calc(100vw - 32px); }
+.modal h3 { font-size: 15px; font-weight: 600; margin-bottom: 18px; color: #eee; }
+.form-group { margin-bottom: 14px; }
+.form-group label { display: block; font-size: 11px; font-weight: 500; color: #777; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.6px; }
+.form-group input { width: 100%; background: #111; border: 1px solid #2e2e2e; border-radius: 6px; padding: 8px 11px; color: #e0e0e0; font-size: 13px; outline: none; transition: border-color 0.15s; }
+.form-group input:focus { border-color: #4fc3f7; }
+
+.checkbox-list { max-height: 230px; overflow-y: auto; border: 1px solid #2e2e2e; border-radius: 6px; background: #111; }
+.cb-item { display: flex; align-items: center; gap: 9px; padding: 9px 12px; cursor: pointer; border-bottom: 1px solid #1e1e1e; transition: background 0.1s; }
+.cb-item:last-child { border-bottom: none; }
+.cb-item:hover { background: #181818; }
+.cb-item input[type=checkbox] { width: 14px; height: 14px; accent-color: #4fc3f7; cursor: pointer; flex-shrink: 0; }
+.cb-label { flex: 1; font-size: 12px; color: #ccc; }
+.cb-live { font-size: 10px; color: #43a047; font-weight: 600; }
+.cb-sub { font-size: 10px; color: #555; margin-left: auto; font-family: monospace; }
+
+.modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+
+.toast { position: fixed; bottom: 20px; right: 20px; background: #252525; border: 1px solid #333; color: #e0e0e0; padding: 10px 16px; border-radius: 8px; font-size: 13px; z-index: 200; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
+.toast.show { opacity: 1; }
+.toast.err { background: #1e0e0e; border-color: #5a1a1a; color: #ff8a8a; }
+
+.empty { padding: 32px; text-align: center; color: #444; font-size: 13px; }
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="logo">▶</span>
+  <h1>YoutubeLiveHDHR</h1>
+  <button class="reload-btn" id="refresh-btn" title="Refresh live status">↻ Refresh</button>
+</header>
+
+<div class="tabs">
+  <div class="tab active" data-tab="channels">Channels<span class="tab-badge" id="ch-badge">0</span></div>
+  <div class="tab" data-tab="groups">Groups<span class="tab-badge" id="grp-badge">0</span></div>
+</div>
+
+<div class="content">
+  <div id="tab-channels">
+    <div class="section-header">
+      <h2>Channels</h2>
+      <button class="btn btn-primary" id="add-channel-btn">+ Add Channel</button>
+    </div>
+    <div class="channel-list" id="channels-list"><div class="empty">Loading...</div></div>
+  </div>
+
+  <div id="tab-groups" class="hidden">
+    <div class="section-header">
+      <h2>Groups</h2>
+      <button class="btn btn-primary" id="add-group-btn">+ Add Group</button>
+    </div>
+    <div id="groups-list"><div class="empty">Loading...</div></div>
+  </div>
+</div>
+
+<!-- Channel Modal -->
+<div class="modal-overlay hidden" id="channel-modal">
+  <div class="modal">
+    <h3 id="ch-modal-title">Add Channel</h3>
+    <div class="form-group">
+      <label>Channel Name</label>
+      <input type="text" id="ch-name" placeholder="e.g. Jim Acosta" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label>YouTube Handle or Channel ID</label>
+      <input type="text" id="ch-youtube" placeholder="@handle or UCxxxxxxxx" autocomplete="off">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-close="channel-modal">Cancel</button>
+      <button class="btn btn-primary" id="save-channel-btn">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Group Modal -->
+<div class="modal-overlay hidden" id="group-modal">
+  <div class="modal">
+    <h3 id="grp-modal-title">Add Group</h3>
+    <div class="form-group">
+      <label>Group Name</label>
+      <input type="text" id="grp-name" placeholder="e.g. Deconstruction" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label>Member Channels</label>
+      <div class="checkbox-list" id="grp-channels"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-close="group-modal">Cancel</button>
+      <button class="btn btn-primary" id="save-group-btn">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let S = { channels: [], groups: [] };
+let editingChId = null;
+let editingGrpId = null;
+
+// ── Data ────────────────────────────────────────────────────────────────────
+
+async function load() {
+  try {
+    const res = await fetch('/api/config');
+    if (!res.ok) throw new Error(res.statusText);
+    S = await res.json();
+    renderChannels();
+    renderGroups();
+  } catch(e) { toast('Failed to load config: ' + e.message, true); }
+}
+
+// ── Tabs ─────────────────────────────────────────────────────────────────────
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    const name = tab.dataset.tab;
+    document.getElementById('tab-channels').classList.toggle('hidden', name !== 'channels');
+    document.getElementById('tab-groups').classList.toggle('hidden', name !== 'groups');
+  });
+});
+
+// ── Channels ─────────────────────────────────────────────────────────────────
+
+function renderChannels() {
+  const chs = S.channels || [];
+  const live = chs.filter(c => c.live).length;
+  document.getElementById('ch-badge').textContent = chs.length;
+  document.querySelector('.tabs .tab:nth-child(1) .tab-badge').textContent = chs.length;
+
+  const list = document.getElementById('channels-list');
+  if (!chs.length) { list.innerHTML = '<div class="empty">No channels yet. Add one above.</div>'; return; }
+  list.innerHTML = chs.map(ch => `
+    <div class="card">
+      <div class="live-dot ${ch.live ? 'on' : 'off'}"></div>
+      <div class="info">
+        <div class="info-name">${esc(ch.name)}</div>
+        <div class="info-sub">${esc(ch.youtube)}</div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-ghost btn-sm" data-ch-edit="${ch.id}">Edit</button>
+        <button class="btn btn-danger btn-sm" data-ch-del="${ch.id}">Delete</button>
+      </div>
+    </div>`).join('');
+}
+
+document.getElementById('channels-list').addEventListener('click', e => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  const id = parseInt(btn.dataset.chEdit || btn.dataset.chDel);
+  if ('chEdit' in btn.dataset) openChModal(id);
+  if ('chDel' in btn.dataset) deleteChannel(id);
+});
+
+document.getElementById('add-channel-btn').addEventListener('click', () => openChModal(null));
+
+function openChModal(id) {
+  editingChId = id;
+  const ch = id != null ? S.channels.find(c => c.id === id) : null;
+  document.getElementById('ch-modal-title').textContent = ch ? 'Edit Channel' : 'Add Channel';
+  document.getElementById('ch-name').value = ch ? ch.name : '';
+  document.getElementById('ch-youtube').value = ch ? ch.youtube : '';
+  showModal('channel-modal');
+  document.getElementById('ch-name').focus();
+}
+
+document.getElementById('save-channel-btn').addEventListener('click', saveChannel);
+
+async function saveChannel() {
+  const name = document.getElementById('ch-name').value.trim();
+  const youtube = document.getElementById('ch-youtube').value.trim();
+  if (!name || !youtube) { toast('Name and YouTube handle required', true); return; }
+  const url = editingChId != null ? `/api/channels/${editingChId}` : '/api/channels';
+  const method = editingChId != null ? 'PUT' : 'POST';
+  try {
+    const res = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify({name, youtube}) });
+    if (!res.ok) { const t = await res.text(); throw new Error(t); }
+    closeModal('channel-modal');
+    await load();
+    toast(editingChId != null ? 'Channel updated' : 'Channel added');
+  } catch(e) { toast('Error: ' + e.message, true); }
+}
+
+async function deleteChannel(id) {
+  const ch = S.channels.find(c => c.id === id);
+  if (!confirm(`Delete "${ch ? ch.name : id}"?`)) return;
+  try {
+    const res = await fetch(`/api/channels/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(await res.text());
+    await load();
+    toast('Channel deleted');
+  } catch(e) { toast('Error: ' + e.message, true); }
+}
+
+// ── Groups ────────────────────────────────────────────────────────────────────
+
+function renderGroups() {
+  const grps = S.groups || [];
+  document.querySelector('.tabs .tab:nth-child(2) .tab-badge').textContent = grps.length;
+
+  const list = document.getElementById('groups-list');
+  if (!grps.length) { list.innerHTML = '<div class="empty">No groups yet. Add one above.</div>'; return; }
+  list.innerHTML = grps.map((grp, i) => {
+    const members = (grp.channels || []).map(cid => {
+      const ch = S.channels.find(c => c.id === cid);
+      if (!ch) return '';
+      return `<span class="pill"><span class="pill-dot ${ch.live ? 'on' : 'off'}"></span>${esc(ch.name)}</span>`;
+    }).join('');
+    return `
+      <div class="group-card">
+        <div class="group-header">
+          <div class="live-dot ${grp.live ? 'on' : 'off'}"></div>
+          <span class="ch-num">Ch ${i + 1}</span>
+          <div class="group-name">${esc(grp.name)}</div>
+          <div class="actions">
+            <button class="btn btn-ghost btn-sm" data-grp-edit="${grp.id}">Edit</button>
+            <button class="btn btn-danger btn-sm" data-grp-del="${grp.id}">Delete</button>
+          </div>
+        </div>
+        <div class="members">${members || '<span class="no-members">No members</span>'}</div>
+      </div>`;
+  }).join('');
+}
+
+document.getElementById('groups-list').addEventListener('click', e => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  const id = parseInt(btn.dataset.grpEdit || btn.dataset.grpDel);
+  if ('grpEdit' in btn.dataset) openGrpModal(id);
+  if ('grpDel' in btn.dataset) deleteGroup(id);
+});
+
+document.getElementById('add-group-btn').addEventListener('click', () => openGrpModal(null));
+
+function openGrpModal(id) {
+  editingGrpId = id;
+  const grp = id != null ? S.groups.find(g => g.id === id) : null;
+  document.getElementById('grp-modal-title').textContent = grp ? 'Edit Group' : 'Add Group';
+  document.getElementById('grp-name').value = grp ? grp.name : '';
+  const members = grp ? (grp.channels || []) : [];
+  const chs = S.channels || [];
+  const listEl = document.getElementById('grp-channels');
+  if (!chs.length) {
+    listEl.innerHTML = '<div style="padding:12px;font-size:12px;color:#555">No channels yet — add channels first.</div>';
+  } else {
+    listEl.innerHTML = chs.map(ch => `
+      <label class="cb-item">
+        <input type="checkbox" value="${ch.id}" ${members.includes(ch.id) ? 'checked' : ''}>
+        <span class="cb-label">${esc(ch.name)}</span>
+        ${ch.live ? '<span class="cb-live">● LIVE</span>' : ''}
+        <span class="cb-sub">${esc(ch.youtube)}</span>
+      </label>`).join('');
+  }
+  showModal('group-modal');
+  document.getElementById('grp-name').focus();
+}
+
+document.getElementById('save-group-btn').addEventListener('click', saveGroup);
+
+async function saveGroup() {
+  const name = document.getElementById('grp-name').value.trim();
+  if (!name) { toast('Group name required', true); return; }
+  const channels = Array.from(document.querySelectorAll('#grp-channels input:checked')).map(cb => parseInt(cb.value));
+  const url = editingGrpId != null ? `/api/groups/${editingGrpId}` : '/api/groups';
+  const method = editingGrpId != null ? 'PUT' : 'POST';
+  try {
+    const res = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify({name, channels}) });
+    if (!res.ok) throw new Error(await res.text());
+    closeModal('group-modal');
+    await load();
+    toast(editingGrpId != null ? 'Group updated' : 'Group added');
+  } catch(e) { toast('Error: ' + e.message, true); }
+}
+
+async function deleteGroup(id) {
+  const grp = S.groups.find(g => g.id === id);
+  if (!confirm(`Delete group "${grp ? grp.name : id}"?`)) return;
+  try {
+    const res = await fetch(`/api/groups/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(await res.text());
+    await load();
+    toast('Group deleted');
+  } catch(e) { toast('Error: ' + e.message, true); }
+}
+
+// ── Modals ────────────────────────────────────────────────────────────────────
+
+function showModal(id) { document.getElementById(id).classList.remove('hidden'); }
+function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) el.classList.add('hidden'); });
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.querySelectorAll('.modal-overlay:not(.hidden)').forEach(el => el.classList.add('hidden'));
+});
+document.querySelectorAll('[data-close]').forEach(btn => {
+  btn.addEventListener('click', () => closeModal(btn.dataset.close));
+});
+
+// Enter key navigation in channel modal
+document.getElementById('ch-name').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('ch-youtube').focus(); });
+document.getElementById('ch-youtube').addEventListener('keydown', e => { if (e.key === 'Enter') saveChannel(); });
+document.getElementById('grp-name').addEventListener('keydown', e => { if (e.key === 'Enter') saveGroup(); });
+
+// ── Refresh ───────────────────────────────────────────────────────────────────
+
+document.getElementById('refresh-btn').addEventListener('click', async () => {
+  document.getElementById('refresh-btn').textContent = '↻ Refreshing...';
+  await load();
+  document.getElementById('refresh-btn').textContent = '↻ Refresh';
+});
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+
+let _toastTimer;
+function toast(msg, err) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (err ? ' err' : '');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.className = 'toast', 2800);
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// Auto-refresh live status every 30s
+setInterval(load, 30000);
+load();
+</script>
+</body>
+</html>
