@@ -177,7 +177,7 @@ def build_guide_json(config, live_state: dict) -> list:
             }]
         entries.append(entry)
 
-    for grp in config.groups:
+    for i, grp in enumerate(config.groups, 1):
         prog = {}
         logo = None
         active_member = None
@@ -190,17 +190,17 @@ def build_guide_json(config, live_state: dict) -> list:
                 break
 
         is_live = active_member is not None
-        start, end = _program_window(prog, now)
         guide_name = f"{grp.name} • {active_member.name}" if active_member else grp.name
 
         entry = {
-            "GuideNumber": str(grp.id),
+            "GuideNumber": str(i),
             "GuideName": guide_name,
         }
         if logo:
             entry["ImageURL"] = logo
 
         if is_live:
+            start, end = _program_window(prog, now)
             prog_title = prog.get("title", active_member.name)
             entry["Guide"] = [{
                 "StartTime": start,
@@ -217,15 +217,9 @@ def build_guide_json(config, live_state: dict) -> list:
 def build_xmltv(config, live_state: dict) -> str:
     root = ET.Element("tv", attrib={"generator-info-name": "YoutubeLiveHDHR"})
 
-    for ch in config.channels:
-        el = ET.SubElement(root, "channel", id=str(ch.id))
-        ET.SubElement(el, "display-name").text = ch.name
-        logo = _logo_cache.get(ch.youtube)
-        if logo:
-            ET.SubElement(el, "icon", src=logo)
-
-    for grp in config.groups:
-        el = ET.SubElement(root, "channel", id=str(grp.id))
+    # Groups first (channels 1, 2, 3…)
+    for i, grp in enumerate(config.groups, 1):
+        el = ET.SubElement(root, "channel", id=str(i))
         ET.SubElement(el, "display-name").text = grp.name
         for cid in grp.channels:
             member = next((c for c in config.channels if c.id == cid), None)
@@ -235,18 +229,29 @@ def build_xmltv(config, live_state: dict) -> str:
                     ET.SubElement(el, "icon", src=logo)
                 break
 
+    for ch in config.channels:
+        el = ET.SubElement(root, "channel", id=str(ch.id))
+        ET.SubElement(el, "display-name").text = ch.name
+        logo = _logo_cache.get(ch.youtube)
+        if logo:
+            ET.SubElement(el, "icon", src=logo)
+
     now = int(time.time())
+    tombstone_start = now - 3600
+    tombstone_end = now  # already ended — won't appear in Programs, but overwrites stale data
 
     for ch in config.channels:
         prog = program_info.get(ch.youtube, {})
         is_live = bool(live_state.get(ch.id))
-        if not is_live:
-            continue
-        start, end = _program_window(prog, now)
-        _add_programme(root, str(ch.id), f"{ch.name}: {prog.get('title', ch.name)}",
-                       prog.get("description", ""), prog.get("thumbnail", ""), start, end)
+        if is_live:
+            start, end = _program_window(prog, now)
+            _add_programme(root, str(ch.id), f"{ch.name}: {prog.get('title', ch.name)}",
+                           prog.get("description", ""), prog.get("thumbnail", ""), start, end)
+        else:
+            # Tombstone: overwrites any stale EPG entry Jellyfin has cached for this channel
+            _add_programme(root, str(ch.id), ch.name, "", "", tombstone_start, tombstone_end)
 
-    for grp in config.groups:
+    for i, grp in enumerate(config.groups, 1):
         prog = {}
         active_member = None
         for cid in grp.channels:
@@ -256,12 +261,13 @@ def build_xmltv(config, live_state: dict) -> str:
                 prog = program_info.get(member.youtube, {})
                 break
 
-        if not active_member:
-            continue
-        start, end = _program_window(prog, now)
-        title = f"{active_member.name}: {prog.get('title', active_member.name)}"
-        _add_programme(root, str(grp.id), title,
-                       prog.get("description", ""), prog.get("thumbnail", ""), start, end)
+        if active_member:
+            start, end = _program_window(prog, now)
+            title = f"{active_member.name}: {prog.get('title', active_member.name)}"
+            _add_programme(root, str(i), title,
+                           prog.get("description", ""), prog.get("thumbnail", ""), start, end)
+        else:
+            _add_programme(root, str(i), grp.name, "", "", tombstone_start, tombstone_end)
 
     ET.indent(root)
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding="unicode")
