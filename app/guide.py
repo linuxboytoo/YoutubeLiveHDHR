@@ -140,11 +140,11 @@ def refresh_all_programs(channels, live_state: dict = None):
 def _program_window(prog: dict, now: int) -> tuple[int, int]:
     """Return (start, end) for a live programme slot.
 
-    Start is capped to 30 min ago so the window stays compact even for
-    streams that have been running for days.
+    Start is the actual stream start time from YouTube metadata.
+    End extends LIVE_SLOT_HOURS forward so the slot always covers now.
     """
     raw_start = prog.get("start_time", now) if prog else now
-    start = max(min(raw_start, now), now - 1800)
+    start = min(raw_start, now)  # never in the future
     end = now + LIVE_SLOT_HOURS * 3600
     return start, end
 
