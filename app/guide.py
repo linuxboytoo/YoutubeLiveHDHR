@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import subprocess
+import threading
 import time
 import xml.etree.ElementTree as ET
 from typing import Optional
@@ -87,20 +88,26 @@ def fetch_channel_logo(uc_id: str) -> Optional[str]:
 
 
 def _fetch_program(uc_id: str, live: bool = False):
-    """Fetch program info. Uses /live URL when live so the title/thumbnail reflect the current stream."""
+    """Fetch program info. Uses /live URL + is_live filter when live."""
     now = time.time()
     if now - _program_fetched_at.get(uc_id, 0) < PROGRAM_TTL:
         return
-    # Live streams have their metadata at /live; offline channels use /videos for latest upload
-    url = (f"https://www.youtube.com/channel/{uc_id}/live" if live
-           else f"https://www.youtube.com/channel/{uc_id}/videos")
+
+    if live:
+        # --match-filter ensures we only accept genuinely live content;
+        # yt-dlp sometimes returns a past video from the /live URL.
+        cmd = ["yt-dlp", "--playlist-items", "1", "--dump-json", "--no-warnings",
+               "--match-filter", "is_live",
+               f"https://www.youtube.com/channel/{uc_id}/live"]
+    else:
+        cmd = ["yt-dlp", "--playlist-items", "1", "--dump-json", "--no-warnings",
+               f"https://www.youtube.com/channel/{uc_id}/videos"]
+
     try:
-        result = subprocess.run(
-            ["yt-dlp", "--playlist-items", "1", "--dump-json", "--no-warnings", url],
-            capture_output=True, text=True, timeout=60
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         line = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
         if not line:
+            logger.debug("No %s data for %s", "live stream" if live else "video", uc_id)
             return
         info = json.loads(line)
         thumbs = [t for t in info.get("thumbnails", []) if t.get("url")]
@@ -113,10 +120,12 @@ def _fetch_program(uc_id: str, live: bool = False):
             "description": info.get("description", ""),
             "thumbnail": thumbnail,
             "start_time": info.get("timestamp") or info.get("release_timestamp") or int(now),
+            "is_live": bool(info.get("is_live")),
         }
         _program_fetched_at[uc_id] = now
         _save_cache()
-        logger.info("Program info updated for %s: %s", uc_id, program_info[uc_id]["title"])
+        logger.info("Program info updated for %s: %s (live=%s)",
+                    uc_id, program_info[uc_id]["title"][:60], program_info[uc_id]["is_live"])
     except Exception as e:
         logger.warning("Error fetching program info for %s: %s", uc_id, e)
 
@@ -168,6 +177,10 @@ def build_guide_json(config, live_state: dict) -> list:
             entry["ImageURL"] = logo
 
         if is_live:
+            # If cached data was fetched while offline, kick off a live refresh in background
+            if not prog.get("is_live"):
+                threading.Thread(target=force_refresh_program,
+                                 args=(ch.youtube,), kwargs={"is_live": True}, daemon=True).start()
             entry["Guide"] = [{
                 "StartTime": start,
                 "EndTime": end,
