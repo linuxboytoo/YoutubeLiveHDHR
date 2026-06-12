@@ -1,5 +1,9 @@
+import json as _json
 import logging
+import os
 import threading
+import urllib.error
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
@@ -16,6 +20,56 @@ live_state: dict[int, Optional[int]] = {}
 
 _scheduler: Optional[BackgroundScheduler] = None
 _config: Optional[AppConfig] = None
+
+JELLYFIN_URL = os.getenv("JELLYFIN_URL", "").rstrip("/")
+JELLYFIN_API_KEY = os.getenv("JELLYFIN_API_KEY", "")
+
+_guide_task_id: Optional[str] = None
+
+
+def _find_guide_task_id() -> Optional[str]:
+    """Look up Jellyfin's RefreshGuide scheduled task ID (cached after first lookup)."""
+    global _guide_task_id
+    if _guide_task_id:
+        return _guide_task_id
+    if not JELLYFIN_URL or not JELLYFIN_API_KEY:
+        return None
+    try:
+        req = urllib.request.Request(
+            f"{JELLYFIN_URL}/ScheduledTasks",
+            headers={"X-Emby-Token": JELLYFIN_API_KEY},
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            tasks = _json.loads(resp.read())
+        for task in tasks:
+            name = task.get("Name", "").lower()
+            if "guide" in name or task.get("Key") == "RefreshGuide":
+                _guide_task_id = task["Id"]
+                logger.info("Found Jellyfin guide task: %s (%s)", task.get("Name"), _guide_task_id)
+                return _guide_task_id
+    except Exception as e:
+        logger.debug("Could not find Jellyfin guide task: %s", e)
+    return None
+
+
+def _trigger_jellyfin_guide_refresh():
+    """Tell Jellyfin to re-fetch guide data from our endpoints."""
+    if not JELLYFIN_URL or not JELLYFIN_API_KEY:
+        return
+    task_id = _find_guide_task_id()
+    if not task_id:
+        return
+    try:
+        req = urllib.request.Request(
+            f"{JELLYFIN_URL}/ScheduledTasks/Running/{task_id}",
+            method="POST",
+            headers={"X-Emby-Token": JELLYFIN_API_KEY},
+            data=b"",
+        )
+        urllib.request.urlopen(req, timeout=10).close()
+        logger.info("Triggered Jellyfin guide refresh")
+    except Exception as e:
+        logger.warning("Jellyfin guide refresh trigger failed: %s", e)
 
 
 def _check_channel(channel: ChannelConfig) -> tuple[ChannelConfig, bool]:
@@ -35,6 +89,8 @@ def _poll():
     if _config is None:
         return
 
+    any_changed = False
+
     with ThreadPoolExecutor(max_workers=8) as executor:
         futures = {executor.submit(_check_channel, ch): ch for ch in _config.channels}
         for future in as_completed(futures):
@@ -46,6 +102,7 @@ def _poll():
             was_live = live_state.get(channel.id, False)
             live_state[channel.id] = is_live
             if is_live != was_live:
+                any_changed = True
                 logger.info("Channel %s (%s): %s", channel.id, channel.name, "LIVE" if is_live else "offline")
                 threading.Thread(target=guide.force_refresh_program,
                                  args=(channel.youtube,),
@@ -58,6 +115,9 @@ def _poll():
         live_state[group.id] = active_cid
         if active_cid != prev_active:
             logger.info("Group %s now using channel %s", group.id, active_cid)
+
+    if any_changed:
+        threading.Thread(target=_trigger_jellyfin_guide_refresh, daemon=True).start()
 
 
 def _fetch_logos(channels):

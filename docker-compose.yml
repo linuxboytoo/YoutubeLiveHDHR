@@ -13,4 +13,6 @@ services:
       - HDHR_FRIENDLY_NAME=${HDHR_FRIENDLY_NAME:-YouTubeHDHR}
       - POLL_INTERVAL=${POLL_INTERVAL:-60}
       - CONFIG_PATH=${CONFIG_PATH:-/config/channels.yaml}
+      - JELLYFIN_URL=${JELLYFIN_URL:-}
+      - JELLYFIN_API_KEY=${JELLYFIN_API_KEY:-}
     restart: unless-stopped
