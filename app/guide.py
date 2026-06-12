@@ -137,22 +137,15 @@ def refresh_all_programs(channels, live_state: dict = None):
                 executor.submit(_fetch_program, ch.youtube, is_live)
 
 
-def _program_window(prog: dict, is_live: bool, now: int) -> tuple[int, int]:
-    """Return (start, end) epoch seconds for a program slot.
+def _program_window(prog: dict, now: int) -> tuple[int, int]:
+    """Return (start, end) for a live programme slot.
 
-    Live channels: window starts at stream start (capped to now) and extends
-    LIVE_SLOT_HOURS forward so the slot always covers the current time.
-    Offline channels: a 1-hour placeholder covering the current hour.
+    Start is capped to 30 min ago so the window stays compact even for
+    streams that have been running for days.
     """
-    if is_live:
-        raw_start = prog.get("start_time", now) if prog else now
-        # Cap start to at most 30 min ago so EPG window stays compact regardless of stream age
-        start = max(min(raw_start, now), now - 1800)
-        end = now + LIVE_SLOT_HOURS * 3600
-    else:
-        # Align to the current hour boundary for a tidy grid
-        start = (now // 3600) * 3600
-        end = start + 3600
+    raw_start = prog.get("start_time", now) if prog else now
+    start = max(min(raw_start, now), now - 1800)
+    end = now + LIVE_SLOT_HOURS * 3600
     return start, end
 
 
@@ -164,7 +157,7 @@ def build_guide_json(config, live_state: dict) -> list:
     for ch in config.channels:
         prog = program_info.get(ch.youtube, {})
         is_live = bool(live_state.get(ch.id))
-        start, end = _program_window(prog, is_live, now)
+        start, end = _program_window(prog, now)
 
         entry = {
             "GuideNumber": str(ch.id),
@@ -174,13 +167,14 @@ def build_guide_json(config, live_state: dict) -> list:
         if logo:
             entry["ImageURL"] = logo
 
-        entry["Guide"] = [{
-            "StartTime": start,
-            "EndTime": end,
-            "Title": prog.get("title", ch.name) if is_live else "Not Live",
-            "Synopsis": prog.get("description", "") if is_live else "",
-            "ImageURL": prog.get("thumbnail", "") if is_live else "",
-        }]
+        if is_live:
+            entry["Guide"] = [{
+                "StartTime": start,
+                "EndTime": end,
+                "Title": prog.get("title", ch.name),
+                "Synopsis": prog.get("description", ""),
+                "ImageURL": prog.get("thumbnail", ""),
+            }]
         entries.append(entry)
 
     for grp in config.groups:
@@ -196,7 +190,7 @@ def build_guide_json(config, live_state: dict) -> list:
                 break
 
         is_live = active_member is not None
-        start, end = _program_window(prog, is_live, now)
+        start, end = _program_window(prog, now)
         guide_name = f"{grp.name} • {active_member.name}" if active_member else grp.name
 
         entry = {
@@ -208,17 +202,13 @@ def build_guide_json(config, live_state: dict) -> list:
 
         if is_live:
             prog_title = prog.get("title", active_member.name)
-            title = f"{active_member.name}: {prog_title}"
-        else:
-            title = "Nothing Live"
-
-        entry["Guide"] = [{
-            "StartTime": start,
-            "EndTime": end,
-            "Title": title,
-            "Synopsis": prog.get("description", "") if is_live else "",
-            "ImageURL": prog.get("thumbnail", "") if is_live else "",
-        }]
+            entry["Guide"] = [{
+                "StartTime": start,
+                "EndTime": end,
+                "Title": f"{active_member.name}: {prog_title}",
+                "Synopsis": prog.get("description", ""),
+                "ImageURL": prog.get("thumbnail", ""),
+            }]
         entries.append(entry)
 
     return entries
@@ -250,11 +240,11 @@ def build_xmltv(config, live_state: dict) -> str:
     for ch in config.channels:
         prog = program_info.get(ch.youtube, {})
         is_live = bool(live_state.get(ch.id))
-        start, end = _program_window(prog, is_live, now)
-        title = prog.get("title", ch.name) if is_live else "Not Live"
-        desc = prog.get("description", "") if is_live else ""
-        thumb = prog.get("thumbnail", "") if is_live else ""
-        _add_programme(root, str(ch.id), title, desc, thumb, start, end)
+        if not is_live:
+            continue
+        start, end = _program_window(prog, now)
+        _add_programme(root, str(ch.id), prog.get("title", ch.name),
+                       prog.get("description", ""), prog.get("thumbnail", ""), start, end)
 
     for grp in config.groups:
         prog = {}
@@ -266,19 +256,12 @@ def build_xmltv(config, live_state: dict) -> str:
                 prog = program_info.get(member.youtube, {})
                 break
 
-        is_live = active_member is not None
-        start, end = _program_window(prog, is_live, now)
-
-        if is_live:
-            title = f"{active_member.name}: {prog.get('title', active_member.name)}"
-            desc = prog.get("description", "")
-            thumb = prog.get("thumbnail", "")
-        else:
-            title = "Nothing Live"
-            desc = ""
-            thumb = ""
-
-        _add_programme(root, str(grp.id), title, desc, thumb, start, end)
+        if not active_member:
+            continue
+        start, end = _program_window(prog, now)
+        title = f"{active_member.name}: {prog.get('title', active_member.name)}"
+        _add_programme(root, str(grp.id), title,
+                       prog.get("description", ""), prog.get("thumbnail", ""), start, end)
 
     ET.indent(root)
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding="unicode")
