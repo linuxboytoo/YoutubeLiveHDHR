@@ -171,7 +171,7 @@ def build_guide_json(config, live_state: dict) -> list:
             entry["Guide"] = [{
                 "StartTime": start,
                 "EndTime": end,
-                "Title": prog.get("title", ch.name),
+                "Title": f"{ch.name}: {prog.get('title', ch.name)}",
                 "Synopsis": prog.get("description", ""),
                 "ImageURL": prog.get("thumbnail", ""),
             }]
@@ -243,7 +243,7 @@ def build_xmltv(config, live_state: dict) -> str:
         if not is_live:
             continue
         start, end = _program_window(prog, now)
-        _add_programme(root, str(ch.id), prog.get("title", ch.name),
+        _add_programme(root, str(ch.id), f"{ch.name}: {prog.get('title', ch.name)}",
                        prog.get("description", ""), prog.get("thumbnail", ""), start, end)
 
     for grp in config.groups:
