@@ -14,7 +14,8 @@ program_info: dict[str, dict] = {}
 _program_fetched_at: dict[str, float] = {}
 
 PROGRAM_TTL = 300  # seconds between program info refreshes
-LIVE_SLOT_HOURS = 0.5  # live slot window — short so stale entries expire quickly
+LIVE_SLOT_HOURS = 4  # live slot window — long enough to survive Jellyfin's import gaps;
+# ended streams are cleared promptly by the Off Air filler, not by this expiring
 
 _CACHE_PATH: Optional[str] = None
 
