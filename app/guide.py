@@ -261,8 +261,8 @@ def build_xmltv(config, live_state: dict) -> str:
             # Use the known stream start time so Jellyfin matches and overwrites the existing
             # entry rather than inserting a new one alongside it.
             old_start = prog.get("start_time") if prog else None
-            ts = min(old_start, now - 60) if old_start else now - 3600
-            _add_programme(root, str(ch.id), ch.name, "", "", ts, now - 60)
+            ts = min(old_start, now - 3600) if old_start else now - 3600
+            _add_programme(root, str(ch.id), ch.name, "", "", ts, now + 120)
 
     for i, grp in enumerate(config.groups, 1):
         prog = {}
@@ -288,8 +288,8 @@ def build_xmltv(config, live_state: dict) -> str:
                     if member_prog.get("start_time"):
                         break
             old_start = member_prog.get("start_time") if member_prog else None
-            ts = min(old_start, now - 60) if old_start else now - 3600
-            _add_programme(root, str(i), grp.name, "", "", ts, now - 60)
+            ts = min(old_start, now - 3600) if old_start else now - 3600
+            _add_programme(root, str(i), grp.name, "", "", ts, now + 120)
 
     ET.indent(root)
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding="unicode")
