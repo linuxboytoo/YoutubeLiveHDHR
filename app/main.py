@@ -321,6 +321,7 @@ def _do_reload():
 @app.post("/api/refresh")
 def api_refresh():
     poller._poll()
+    poller._trigger_jellyfin_guide_refresh()
     return api_config()
 
 @app.get("/api/config")
