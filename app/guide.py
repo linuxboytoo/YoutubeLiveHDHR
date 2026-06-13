@@ -167,7 +167,7 @@ def _offair_window(prog: dict, now: int) -> tuple[int, int]:
     """
     raw_start = prog.get("start_time") if prog else None
     start = min(raw_start, now - 60) if raw_start else now - 7200
-    end = now + int(LIVE_SLOT_HOURS * 3600)
+    end = now + 300  # 5 min — overwrites the stale entry, then falls off so the channel goes blank
     return start, end
 
 
