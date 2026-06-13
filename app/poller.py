@@ -139,6 +139,7 @@ def start(config: AppConfig, interval_seconds: int = 60):
     _scheduler.add_job(_poll, "interval", seconds=interval_seconds, id="poll_live")
     _scheduler.add_job(lambda: guide.refresh_all_programs(_config.channels, live_state),
                        "interval", minutes=15, id="poll_guide")
+    _scheduler.add_job(_trigger_jellyfin_guide_refresh, "interval", minutes=20, id="jellyfin_guide")
     _scheduler.start()
     logger.info("Poller started, interval=%ss", interval_seconds)
 

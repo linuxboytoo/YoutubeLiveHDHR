@@ -14,7 +14,7 @@ program_info: dict[str, dict] = {}
 _program_fetched_at: dict[str, float] = {}
 
 PROGRAM_TTL = 300  # seconds between program info refreshes
-LIVE_SLOT_HOURS = 6  # assume a live stream occupies this many hours going forward
+LIVE_SLOT_HOURS = 0.5  # live slot window — short so stale entries expire quickly
 
 _CACHE_PATH: Optional[str] = None
 
@@ -257,12 +257,6 @@ def build_xmltv(config, live_state: dict) -> str:
             start, end = _program_window(prog, now)
             _add_programme(root, str(ch.id), f"{ch.name}: {prog.get('title', ch.name)}",
                            prog.get("description", ""), prog.get("thumbnail", ""), start, end)
-        else:
-            # Use the known stream start time so Jellyfin matches and overwrites the existing
-            # entry rather than inserting a new one alongside it.
-            old_start = prog.get("start_time") if prog else None
-            ts = min(old_start, now - 3600) if old_start else now - 3600
-            _add_programme(root, str(ch.id), ch.name, "", "", ts, now + 120)
 
     for i, grp in enumerate(config.groups, 1):
         prog = {}
@@ -279,17 +273,6 @@ def build_xmltv(config, live_state: dict) -> str:
             title = f"{grp.name} | {active_member.name}: {prog.get('title', active_member.name)}"
             _add_programme(root, str(i), title,
                            prog.get("description", ""), prog.get("thumbnail", ""), start, end)
-        else:
-            member_prog = {}
-            for cid in grp.channels:
-                member = next((c for c in config.channels if c.id == cid), None)
-                if member:
-                    member_prog = program_info.get(member.youtube, {})
-                    if member_prog.get("start_time"):
-                        break
-            old_start = member_prog.get("start_time") if member_prog else None
-            ts = min(old_start, now - 3600) if old_start else now - 3600
-            _add_programme(root, str(i), grp.name, "", "", ts, now + 120)
 
     ET.indent(root)
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding="unicode")
