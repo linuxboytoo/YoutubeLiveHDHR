@@ -250,9 +250,6 @@ def build_xmltv(config, live_state: dict) -> str:
             ET.SubElement(el, "icon", src=logo)
 
     now = int(time.time())
-    tombstone_start = now - 3600
-    tombstone_end = now  # already ended — won't appear in Programs, but overwrites stale data
-
     for ch in config.channels:
         prog = program_info.get(ch.youtube, {})
         is_live = bool(live_state.get(ch.id))
@@ -261,8 +258,11 @@ def build_xmltv(config, live_state: dict) -> str:
             _add_programme(root, str(ch.id), f"{ch.name}: {prog.get('title', ch.name)}",
                            prog.get("description", ""), prog.get("thumbnail", ""), start, end)
         else:
-            # Tombstone: overwrites any stale EPG entry Jellyfin has cached for this channel
-            _add_programme(root, str(ch.id), ch.name, "", "", tombstone_start, tombstone_end)
+            # Use the known stream start time so Jellyfin matches and overwrites the existing
+            # entry rather than inserting a new one alongside it.
+            old_start = prog.get("start_time") if prog else None
+            ts = min(old_start, now - 60) if old_start else now - 3600
+            _add_programme(root, str(ch.id), ch.name, "", "", ts, now - 60)
 
     for i, grp in enumerate(config.groups, 1):
         prog = {}
@@ -280,7 +280,16 @@ def build_xmltv(config, live_state: dict) -> str:
             _add_programme(root, str(i), title,
                            prog.get("description", ""), prog.get("thumbnail", ""), start, end)
         else:
-            _add_programme(root, str(i), grp.name, "", "", tombstone_start, tombstone_end)
+            member_prog = {}
+            for cid in grp.channels:
+                member = next((c for c in config.channels if c.id == cid), None)
+                if member:
+                    member_prog = program_info.get(member.youtube, {})
+                    if member_prog.get("start_time"):
+                        break
+            old_start = member_prog.get("start_time") if member_prog else None
+            ts = min(old_start, now - 60) if old_start else now - 3600
+            _add_programme(root, str(i), grp.name, "", "", ts, now - 60)
 
     ET.indent(root)
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding="unicode")
