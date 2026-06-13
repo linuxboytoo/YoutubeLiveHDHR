@@ -154,7 +154,20 @@ def _program_window(prog: dict, now: int) -> tuple[int, int]:
     """
     raw_start = prog.get("start_time", now) if prog else now
     start = min(raw_start, now)  # never in the future
-    end = now + LIVE_SLOT_HOURS * 3600
+    end = now + int(LIVE_SLOT_HOURS * 3600)
+    return start, end
+
+
+def _offair_window(prog: dict, now: int) -> tuple[int, int]:
+    """Return (start, end) for an Off Air filler slot.
+
+    Start reuses the prior stream's start time (capped to ~2h ago) so Jellyfin
+    overwrites the stale live entry in place rather than leaving an orphan.
+    End extends forward so the slot covers now and shows as currently airing.
+    """
+    raw_start = prog.get("start_time") if prog else None
+    start = min(raw_start, now - 60) if raw_start else now - 7200
+    end = now + int(LIVE_SLOT_HOURS * 3600)
     return start, end
 
 
@@ -257,6 +270,11 @@ def build_xmltv(config, live_state: dict) -> str:
             start, end = _program_window(prog, now)
             _add_programme(root, str(ch.id), f"{ch.name}: {prog.get('title', ch.name)}",
                            prog.get("description", ""), prog.get("thumbnail", ""), start, end)
+        else:
+            # Off Air filler — reuses the prior stream's start time so Jellyfin overwrites
+            # the stale live entry in place (it keys programmes by channel + start time).
+            start, end = _offair_window(prog, now)
+            _add_programme(root, str(ch.id), f"{ch.name}: Off Air", "", "", start, end)
 
     for i, grp in enumerate(config.groups, 1):
         prog = {}
@@ -273,6 +291,18 @@ def build_xmltv(config, live_state: dict) -> str:
             title = f"{grp.name} | {active_member.name}: {prog.get('title', active_member.name)}"
             _add_programme(root, str(i), title,
                            prog.get("description", ""), prog.get("thumbnail", ""), start, end)
+        else:
+            # Off Air filler — match the most recently cached member start time to overwrite
+            last_prog = {}
+            for cid in grp.channels:
+                member = next((c for c in config.channels if c.id == cid), None)
+                if member:
+                    mp = program_info.get(member.youtube, {})
+                    if mp.get("start_time"):
+                        last_prog = mp
+                        break
+            start, end = _offair_window(last_prog, now)
+            _add_programme(root, str(i), f"{grp.name}: Off Air", "", "", start, end)
 
     ET.indent(root)
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding="unicode")
