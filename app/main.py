@@ -318,6 +318,11 @@ def _do_reload():
 
 # ── Config API ────────────────────────────────────────────────────────────────
 
+@app.post("/api/refresh")
+def api_refresh():
+    poller._poll()
+    return api_config()
+
 @app.get("/api/config")
 def api_config():
     data = _read_yaml()

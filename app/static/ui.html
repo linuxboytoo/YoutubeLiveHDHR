@@ -417,9 +417,19 @@ document.getElementById('grp-name').addEventListener('keydown', e => { if (e.key
 // ── Refresh ───────────────────────────────────────────────────────────────────
 
 document.getElementById('refresh-btn').addEventListener('click', async () => {
-  document.getElementById('refresh-btn').textContent = '↻ Refreshing...';
-  await load();
-  document.getElementById('refresh-btn').textContent = '↻ Refresh';
+  const btn = document.getElementById('refresh-btn');
+  btn.textContent = '↻ Polling...';
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/refresh', { method: 'POST' });
+    if (!res.ok) throw new Error(res.statusText);
+    S = await res.json();
+    renderChannels();
+    renderGroups();
+    toast('Live status updated');
+  } catch(e) { toast('Refresh failed: ' + e.message, true); }
+  btn.textContent = '↻ Refresh';
+  btn.disabled = false;
 });
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
