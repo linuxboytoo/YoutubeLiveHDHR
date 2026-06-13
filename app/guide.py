@@ -16,16 +16,6 @@ _program_fetched_at: dict[str, float] = {}
 PROGRAM_TTL = 300  # seconds between program info refreshes
 LIVE_SLOT_HOURS = 0.5  # live slot window — short so stale entries expire quickly
 
-
-def group_number(i: int) -> str:
-    """Display/channel number for the i-th group (1-based).
-
-    Zero-padded so groups sort before individual channels (id 1000+) in both
-    string and numeric order — Jellyfin's 'On Now' sorts channel numbers as
-    strings, so "2" would otherwise land after "1001".
-    """
-    return f"{i:03d}"
-
 _CACHE_PATH: Optional[str] = None
 
 
@@ -229,7 +219,7 @@ def build_guide_json(config, live_state: dict) -> list:
         guide_name = f"{grp.name} • {active_member.name}" if active_member else grp.name
 
         entry = {
-            "GuideNumber": group_number(i),
+            "GuideNumber": str(i),
             "GuideName": guide_name,
         }
         if logo:
@@ -253,9 +243,9 @@ def build_guide_json(config, live_state: dict) -> list:
 def build_xmltv(config, live_state: dict) -> str:
     root = ET.Element("tv", attrib={"generator-info-name": "YoutubeLiveHDHR"})
 
-    # Groups first (channels 001, 002, 003…)
+    # Groups first (channels 1, 2, 3…)
     for i, grp in enumerate(config.groups, 1):
-        el = ET.SubElement(root, "channel", id=group_number(i))
+        el = ET.SubElement(root, "channel", id=str(i))
         ET.SubElement(el, "display-name").text = grp.name
         for cid in grp.channels:
             member = next((c for c in config.channels if c.id == cid), None)
@@ -299,7 +289,7 @@ def build_xmltv(config, live_state: dict) -> str:
         if active_member:
             start, end = _program_window(prog, now)
             title = f"{grp.name} | {active_member.name}: {prog.get('title', active_member.name)}"
-            _add_programme(root, group_number(i), title,
+            _add_programme(root, str(i), title,
                            prog.get("description", ""), prog.get("thumbnail", ""), start, end)
         else:
             # Off Air filler — match the most recently cached member start time to overwrite
@@ -312,7 +302,7 @@ def build_xmltv(config, live_state: dict) -> str:
                         last_prog = mp
                         break
             start, end = _offair_window(last_prog, now)
-            _add_programme(root, group_number(i), f"{grp.name}: Off Air", "", "", start, end)
+            _add_programme(root, str(i), f"{grp.name}: Off Air", "", "", start, end)
 
     ET.indent(root)
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding="unicode")

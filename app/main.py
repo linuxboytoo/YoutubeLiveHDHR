@@ -130,9 +130,9 @@ def lineup():
     base = _base_url()
     entries = []
 
-    # Groups first so they get low channel numbers (001, 002, 003…)
+    # Groups first so they get low channel numbers (1, 2, 3…)
     for i, grp in enumerate(_config.groups, 1):
-        gn = guide.group_number(i)
+        gn = str(i)
         active_cid = poller.live_state.get(grp.id)
         active_member = next((c for c in _config.channels if c.id == active_cid), None) if active_cid else None
         guide_name = f"{grp.name} • {active_member.name}" if active_member else grp.name
